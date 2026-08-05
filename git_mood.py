@@ -130,10 +130,10 @@ def parse_args(argv):
         flag, eq, inline = arg.partition("=")
         inline = inline if eq else None
         if arg in ("-h", "--help"):
-            sys.stdout.write(HELP)
+            emit(HELP)
             raise SystemExit(0)
         elif arg in ("-V", "--version"):
-            sys.stdout.write("%s %s\n" % (PROG, VERSION))
+            emit("%s %s\n" % (PROG, VERSION))
             raise SystemExit(0)
         elif arg in ("-a", "--all"):
             whole = True
@@ -524,14 +524,27 @@ def write(stream, text, ascii_):
     """A repo or author name can hold characters the stream cannot encode.
 
     Replace them instead of raising; under --ascii force plain ASCII so the
-    whole output stays below U+0080 whatever the repo is called.
+    whole output stays below U+0080 whatever the repo is called. A stream that
+    is closed (`git-mood >&-` leaves sys.stdout as None) is not a crash.
     """
+    if stream is None:
+        return False
     encoding = "ascii" if ascii_ else (getattr(stream, "encoding", None) or "utf-8")
     try:
         text = text.encode(encoding, "replace").decode(encoding, "replace")
     except LookupError:
         text = text.encode("ascii", "replace").decode("ascii")
-    stream.write(text)
+    try:
+        stream.write(text)
+    except (ValueError, OSError):
+        return False
+    return True
+
+
+def emit(text, ascii_=False):
+    """Print to stdout, or say so on stderr if stdout is gone. Never raise."""
+    if not write(sys.stdout, text, ascii_):
+        raise EnvProblem("could not write to stdout")
 
 
 def build(opts, today, g, ink):
@@ -584,7 +597,7 @@ def main(argv):
         lines = build(opts, date.today(),
                       ASCII_GLYPHS if plain else GLYPHS,
                       Ink(color_enabled(opts)))
-        write(sys.stdout, "\n".join(lines) + "\n", opts.ascii_)
+        emit("\n".join(lines) + "\n", opts.ascii_)
     except Usage as exc:
         write(sys.stderr, "%s: %s; try: %s --help\n" % (PROG, exc, PROG), True)
         return EXIT_USAGE
