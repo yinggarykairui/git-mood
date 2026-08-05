@@ -18,7 +18,7 @@ The whole table of tags, so you can check one against the output:
 | `weekend-coded` | ≥25% of commits on a Saturday or Sunday |
 | `nine-to-five` | ≥60% of commits Mon–Fri, 09:00–17:59 |
 | `burst-driven` | ≥4 weeks with commits, and the busiest is ≥3× their median |
-| `metronomic` | ≥60% of weeks have a commit, and the busiest is <2× the median |
+| `metronomic` | a window of ≥4 weeks, ≥60% of them with a commit, and the busiest <2× the median |
 | `on a tear` | a current streak of ≥5 days |
 | `dormant` | nothing committed in 21 days |
 | `unremarkable` | nothing above fired |
