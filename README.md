@@ -2,9 +2,9 @@
 
 Reads a git repository's history and draws a mood chart in your terminal: tempo, a punch-card clock, streaks, and a verdict that shows its arithmetic.
 
-![git-mood run with --all against a clone of psf/requests](screenshot.png)
+![git-mood run with --weeks 52 against a clone of simonw/llm](screenshot.png)
 
-*Captured from this build: `git-mood --all` against a `--filter=blob:none` clone of [psf/requests](https://github.com/psf/requests).*
+*Captured from this build: `git-mood --weeks 52` against a `--filter=blob:none` clone of [simonw/llm](https://github.com/simonw/llm).*
 
 ## What it does
 
