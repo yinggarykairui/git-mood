@@ -535,8 +535,11 @@ def gutter(label):
     return label.ljust(GUTTER)
 
 
-def render_head(name, g):
-    return ["%s  %s" % (PROG, name), g["rule"] * 60]
+def render_head(name, summary, g):
+    """Name, rule, counts line. The rule is 60 wide but never shorter than
+    the line it underlines, which `--all` can push past 60."""
+    lines = ["%s  %s" % (PROG, name), g["rule"] * max(60, len(summary))]
+    return lines + [summary] if summary else lines
 
 
 def render_summary(commits, opts, nweeks, start, today, g):
@@ -665,31 +668,45 @@ def emit(text, ascii_=False):
         raise EnvProblem("could not write to stdout")
 
 
+def window_words(opts, nweeks):
+    """Name the window the numbers describe, so a dead end says which one."""
+    if opts.whole:
+        return "the whole history", ""
+    return "the last %s" % count(nweeks, "week"), " try --all."
+
+
 def build(opts, today, g, ink):
     top = resolve_repo(opts.path)
     name = tame(os.path.basename(top.rstrip(os.sep)) or top)
-    head = render_head(name, g)
 
+    def page(summary, message):
+        """Header, then exactly one line. Never a half-drawn chart."""
+        head = render_head(name, summary, g)
+        return head + ["", message] if summary else head + [message]
+
+    nothing = "no commits yet %s nothing to chart." % g["dash"]
     if not has_commits(top):
-        return head + ["", "no commits yet %s nothing to chart." % g["dash"]]
+        return page("", nothing)
 
     commits = read_commits(top)
     if not commits:
-        return head + ["", "no commits yet %s nothing to chart." % g["dash"]]
+        return page("", nothing)
 
     start, nweeks = window_start(opts.weeks, opts.whole,
                                  [c.date for c in commits], today)
     commits = [c for c in commits if c.date >= start]
+    where, advice = window_words(opts, nweeks)
     if not commits:
-        return head + ["", "no commits in the last %s. try --all."
-                       % count(nweeks, "week")]
+        return page(render_summary([], opts, nweeks, start, today, g),
+                    "no commits in %s.%s" % (where, advice))
     if opts.author is not None:
         needle = opts.author.lower()
         commits = [c for c in commits
                    if needle in ("%s <%s>" % (c.name, c.email)).lower()]
         if not commits:
-            return head + ["", 'no commits by "%s" in this window. try --all.'
-                           % oneline(opts.author, 30)]
+            return page(render_summary([], opts, nweeks, start, today, g),
+                        'no commits by "%s" in %s.%s'
+                        % (oneline(opts.author, 30), where, advice))
 
     weekly = weekly_counts(commits, start, nweeks)
     last_week = start + timedelta(days=7 * nweeks - 1)
@@ -698,8 +715,9 @@ def build(opts, today, g, ink):
     best, best_start, best_end, current, anchor = streaks(days, today)
     tags, evidence = mood(commits, weekly, nweeks, current, max(days), today)
 
-    return (head
-            + [render_summary(commits, opts, nweeks, start, today, g), ""]
+    return (render_head(name, render_summary(commits, opts, nweeks, start,
+                                             today, g), g)
+            + [""]
             + render_tempo(weekly, start, clamped, ink, g) + [""]
             + render_clock(punch_card(commits), ink, g) + [""]
             + render_streaks(best, best_start, best_end, current, anchor,
