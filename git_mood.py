@@ -320,8 +320,16 @@ def streaks(days, today):
     return best, best_start, best_end, current, anchor
 
 
-def percent(part, total):
-    return int(part * 100.0 / total + 0.5)
+def share(part, total):
+    """The exact percentage. Thresholds are tested against this, not a
+    rounded copy of it, so a tag can never fire below its own line."""
+    return part * 100.0 / total if total else 0.0
+
+
+def floor1(value):
+    """One decimal, rounded down: the printed number is never larger than the
+    measured one, so `2.0x` can never appear under a `< 2x` rule."""
+    return "%.1f" % (math.floor(value * 10) / 10.0)
 
 
 def median(values):
@@ -338,35 +346,39 @@ def median(values):
 def mood(commits, weekly, nweeks, current, last_day, today):
     """Up to three tags, each with exactly one evidence line.
 
-    Thresholds are tested against the *rounded* number that gets printed, so
-    the evidence always satisfies the line it quotes.
+    Every threshold is tested against the exact measurement and only then
+    formatted for print, so no tag fires below the line it quotes and no
+    evidence line contradicts its own rule.
     """
     tags, evidence = [], []
     total = len(commits)
     nonempty = [w for w in weekly if w > 0]
     mid = median(nonempty)
     peak = max(weekly) if weekly else 0
-    ratio = round(peak / mid, 1) if mid else 0.0
+    ratio = peak / mid if mid else 0.0
 
-    night = percent(sum(1 for c in commits if c.hour < 6), total)
-    weekend = percent(sum(1 for c in commits if c.weekday >= 5), total)
-    office = percent(sum(1 for c in commits
-                         if c.weekday < 5 and 9 <= c.hour < 18), total)
-    covered = percent(len(nonempty), nweeks)
+    night = share(sum(1 for c in commits if c.hour < 6), total)
+    weekend = share(sum(1 for c in commits if c.weekday >= 5), total)
+    office = share(sum(1 for c in commits
+                       if c.weekday < 5 and 9 <= c.hour < 18), total)
+    covered = share(len(nonempty), nweeks)
     idle = (today - last_day).days
 
     candidates = [
         (night >= 20, "nocturnal",
-         "%d%% of commits land between 00:00 and 05:59 (line: 20%%)" % night),
+         "%d%% of commits land between 00:00 and 05:59 (line: 20%%)"
+         % int(night)),
         (weekend >= 25, "weekend-coded",
-         "%d%% of commits land on a Saturday or Sunday (line: 25%%)" % weekend),
+         "%d%% of commits land on a Saturday or Sunday (line: 25%%)"
+         % int(weekend)),
         (office >= 60, "nine-to-five",
-         "%d%% of commits land Mon-Fri, 09:00-17:59 (line: 60%%)" % office),
+         "%d%% of commits land Mon-Fri, 09:00-17:59 (line: 60%%)" % int(office)),
         (len(nonempty) >= 4 and ratio >= 3.0, "burst-driven",
-         "the busiest week holds %.1fx the median week (line: 3x)" % ratio),
+         "the busiest week holds %sx the median week (line: 3x)"
+         % floor1(ratio)),
         (nweeks >= 4 and covered >= 60 and ratio < 2.0, "metronomic",
-         "%d of %d weeks have a commit, top week %.1fx the median "
-         "(line: 60%% and 2x)" % (len(nonempty), nweeks, ratio)),
+         "%d of %d weeks have a commit, top week %sx the median "
+         "(line: 60%% and 2x)" % (len(nonempty), nweeks, floor1(ratio))),
         (current >= 5, "on a tear",
          "%d days in a row with at least one commit (line: 5)" % current),
         (idle >= 21, "dormant",
@@ -525,11 +537,15 @@ def render_clock(grid, ink, g):
     top = max(max(row) for row in grid)
     lines = [ink.dim((gutter("clock") + "     " + RULER).rstrip())]
     for index, day in enumerate(DAYS):
-        cells = [cell_glyph(v, top, g) for v in grid[index]]
         # Hours 00:00-05:59 carry the one accent color, so a late-night spike
-        # is visible without reading the ruler.
-        lines.append(ink.dim(INDENT + day + "  ")
-                     + ink.accent("".join(cells[:6])) + "".join(cells[6:]))
+        # is visible without reading the ruler. Only cells that hold commits
+        # are tinted; tinting the empty ones paints a cyan rectangle that
+        # reads as a rendering artifact rather than an accent.
+        cells = []
+        for hour, value in enumerate(grid[index]):
+            glyph = cell_glyph(value, top, g)
+            cells.append(ink.accent(glyph) if hour < 6 and value else glyph)
+        lines.append(ink.dim(INDENT + day + "  ") + "".join(cells))
     lines.append(ink.dim(INDENT + "one cell per hour of the week" + g["sep"]
                          + "darkest = %s" % count(top, "commit")))
     lines.append(ink.dim(INDENT + "author-local time, exactly as recorded "
