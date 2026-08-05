@@ -97,12 +97,26 @@ def oneline(text, limit=60):
     return flat if len(flat) <= limit else flat[:limit - 3] + "..."
 
 
+def flag_shaped(arg):
+    """`--all` and `-a` are flags; `-3` and `-` are values."""
+    return len(arg) > 1 and arg[0] == "-" and (arg[1] == "-" or arg[1].isalpha())
+
+
 def take_value(flag, inline, argv, i):
-    """Return (value, next index) for both `--flag=v` and `--flag v`."""
+    """Return (value, next index) for both `--flag=v` and `--flag v`.
+
+    `flag` is the token the user actually typed, so `-w` never reports itself
+    as `--weeks`. A following flag is refused rather than eaten: swallowing it
+    used to produce advice ("try --all") naming the flag it had just consumed.
+    """
     if inline is not None:
         return inline, i
     if i >= len(argv):
         raise Usage("%s needs a value" % flag)
+    if flag_shaped(argv[i]):
+        raise Usage("%s needs a value; %s is a flag (use %s=%s to mean it "
+                    "literally)" % (flag, oneline(argv[i], 24), flag,
+                                    oneline(argv[i], 24)))
     return argv[i], i + 1
 
 
@@ -125,13 +139,19 @@ def parse_args(argv):
     option rather than guessing.
     """
     path, weeks, whole, author, ascii_, color = None, 26, False, None, False, True
-    i = 0
+    i, only_paths = 0, False
     while i < len(argv):
         arg = argv[i]
         i += 1
         flag, eq, inline = arg.partition("=")
         inline = inline if eq else None
-        if arg in ("-h", "--help"):
+        if only_paths:
+            if path is not None:
+                raise Usage("unexpected argument: %s" % oneline(arg, 24))
+            path = arg
+        elif arg == "--":
+            only_paths = True          # everything after is a path, even `-x`
+        elif arg in ("-h", "--help"):
             emit(HELP)
             raise SystemExit(0)
         elif arg in ("-V", "--version"):
@@ -144,10 +164,10 @@ def parse_args(argv):
         elif arg == "--no-color":
             color = False
         elif flag in ("-w", "--weeks"):
-            raw, i = take_value("--weeks", inline, argv, i)
+            raw, i = take_value(flag, inline, argv, i)
             weeks = parse_weeks(raw)
         elif flag == "--author":
-            author, i = take_value("--author", inline, argv, i)
+            author, i = take_value(flag, inline, argv, i)
         elif arg.startswith("-") and arg != "-":
             raise Usage("unknown option: %s" % oneline(arg, 24))
         elif path is None:
@@ -480,7 +500,9 @@ def render_head(name, g):
 
 
 def render_summary(commits, opts, nweeks, start, today, g):
-    if opts.author:
+    if opts.author is not None:
+        # "was the flag given", not "is the value truthy": --author= is a
+        # filter to the empty string, not an absent filter.
         who = 'filtered to "%s"' % oneline(opts.author, 30)
     else:
         who = count(len(set(c.email.lower() for c in commits)), "author")
@@ -621,7 +643,7 @@ def build(opts, today, g, ink):
     if not commits:
         return head + ["", "no commits in the last %s. try --all."
                        % count(nweeks, "week")]
-    if opts.author:
+    if opts.author is not None:
         needle = opts.author.lower()
         commits = [c for c in commits
                    if needle in ("%s <%s>" % (c.name, c.email)).lower()]
