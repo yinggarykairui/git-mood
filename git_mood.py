@@ -206,24 +206,58 @@ def read_commits(top):
     if done.returncode != 0:
         raise EnvProblem("git log failed: %s"
                          % oneline(done.stderr.decode("utf-8", "replace")))
-    commits = []
-    for record in done.stdout.decode("utf-8", "replace").split("\x1e"):
-        record = record.lstrip("\r\n")
+    return parse_log(done.stdout.decode("utf-8", "replace"))
+
+
+def stamp_parts(stamp):
+    """(date, hour) from an %aI string, or None if it is not one."""
+    try:
+        day = date.fromisoformat(stamp[:10])
+        hour = int(stamp[11:13])
+    except (ValueError, IndexError):
+        return None
+    if not 0 <= hour <= 23:
+        return None
+    return day, hour
+
+
+def parse_log(text):
+    """Split the log into commits without losing any to odd author names.
+
+    An author name may itself contain \\x1f or \\x1e. A record is only complete
+    once it holds a parseable timestamp and at least two field separators; a
+    short fragment is rejoined with the next one (restoring the \\x1e the split
+    ate) instead of being dropped along with its neighbour. Extra \\x1f inside a
+    name is kept by taking the first field as the stamp and the last as the
+    email.
+    """
+    commits, held = [], None
+    for chunk in text.split("\x1e"):
+        fresh = chunk.lstrip("\r\n")
+        if held is None or complete(fresh):
+            # A held fragment that the next chunk cannot complete was real
+            # garbage: drop the fragment, never the record standing behind it.
+            record = fresh
+        else:
+            record = held + "\x1e" + chunk
+        held = None
         if not record:
             continue
+        if not complete(record):
+            held = record
+            continue
+        held = None
         fields = record.split("\x1f")
-        if len(fields) != 3:
-            continue
-        stamp, name, email = fields
-        try:
-            day = date.fromisoformat(stamp[:10])
-            hour = int(stamp[11:13])
-        except (ValueError, IndexError):
-            continue
-        if not 0 <= hour <= 23:
-            continue
-        commits.append(Commit(day, hour, day.weekday(), name, email))
+        when = stamp_parts(fields[0])
+        name, email = "\x1f".join(fields[1:-1]), fields[-1]
+        commits.append(Commit(when[0], when[1], when[0].weekday(), name, email))
     return commits
+
+
+def complete(record):
+    """A record git can no longer be adding to: stamp plus both separators."""
+    return (record.count("\x1f") >= 2
+            and stamp_parts(record.split("\x1f")[0]) is not None)
 
 
 # --------------------------------------------------------------------------
