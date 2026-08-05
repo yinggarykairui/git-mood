@@ -56,6 +56,7 @@ RULER = "0  3  6  9  12 15 18 21 "   # exactly 24 columns, one per hour
 
 GLYPHS = {
     "spark": "▁▂▃▄▅▆▇█",
+    "spark_zero": "·",
     "grid_zero": "·",
     "grid": "░▒▓█",
     "rule": "─",
@@ -65,6 +66,7 @@ GLYPHS = {
 }
 ASCII_GLYPHS = {
     "spark": ".:-=+*#%",
+    "spark_zero": "_",
     "grid_zero": ".",
     "grid": "-=+#",
     "rule": "-",
@@ -447,6 +449,16 @@ def cell_glyph(value, top, g):
     return ramp_glyph(value, top, g["grid"])
 
 
+def spark_glyph(value, top, g):
+    """A week with no commits gets its own low-ink glyph, not the shortest bar.
+
+    Otherwise a repo three days old reads as six months of steady work.
+    """
+    if value <= 0:
+        return g["spark_zero"]
+    return ramp_glyph(value, top, g["spark"])
+
+
 def gutter(label):
     return label.ljust(GUTTER)
 
@@ -465,19 +477,47 @@ def render_summary(commits, opts, nweeks, start, today, g):
                           count(nweeks, "week"), span])
 
 
-def render_tempo(weekly, start, ink, g):
+def bucket_columns(weekly, size):
+    """[(first week index, weeks in the column, commits)], oldest first.
+
+    A window that does not divide evenly leaves one short column; it is put at
+    the *oldest* end, so the newest bar is never a partial bucket masquerading
+    as a decline.
+    """
+    lead = len(weekly) % size
+    edges = ([(0, lead)] if lead else []) + [(i, size) for i in
+                                             range(lead, len(weekly), size)]
+    return [(i, n, sum(weekly[i:i + n])) for i, n in edges]
+
+
+def per_week(total, nweeks):
+    """Enough precision that a real commit never prints as 0.0/week."""
+    average = total / float(nweeks)
+    return "%.1f" % average if average >= 0.1 else "%.2g" % average
+
+
+def render_tempo(weekly, start, clamped, ink, g):
     nweeks = len(weekly)
     size = int(math.ceil(nweeks / float(SPARK_COLS)))
-    columns = [sum(weekly[i:i + size]) for i in range(0, nweeks, size)]
-    top = max(columns)
-    bar = "".join(ramp_glyph(c, top, g["spark"]) for c in columns)
-    peak = max(weekly)
-    peak_week = start + timedelta(days=7 * weekly.index(peak))
+    columns = bucket_columns(weekly, size)
+    top = max(c[2] for c in columns)
+    bar = "".join(spark_glyph(c[2], top, g) for c in columns)
+
+    # Caption the peak *column*, the bar a reader can actually point at.
+    first, span, peak = max(columns, key=lambda c: c[2])
+    when = (start + timedelta(days=7 * first)).isoformat()
+    where = "the week of %s" % when if span == 1 else \
+            "the %s from %s" % (count(span, "week"), when)
+    caption = "peak %d in %s" % (peak, where)
+    if clamped:
+        caption += "%sincludes %s dated later" % (g["sep"],
+                                                  count(clamped, "commit"))
     return [
         ink.dim(gutter("tempo")) + bar,
-        ink.dim(INDENT + "one column = %s%s%.1f commits/week"
-                % (count(size, "week"), g["sep"], sum(weekly) / float(nweeks))),
-        ink.dim(INDENT + "peak %d in the week of %s" % (peak, peak_week.isoformat())),
+        ink.dim(INDENT + "one column = %s%s%s commits/week"
+                % (count(size, "week"), g["sep"],
+                   per_week(sum(weekly), nweeks))),
+        ink.dim(INDENT + caption),
     ]
 
 
@@ -574,13 +614,15 @@ def build(opts, today, g, ink):
                            % oneline(opts.author, 30)]
 
     weekly = weekly_counts(commits, start, nweeks)
+    last_week = start + timedelta(days=7 * nweeks - 1)
+    clamped = sum(1 for c in commits if c.date > last_week)
     days = set(c.date for c in commits)
     best, best_start, best_end, current, anchor = streaks(days, today)
     tags, evidence = mood(commits, weekly, nweeks, current, max(days), today)
 
     return (head
             + [render_summary(commits, opts, nweeks, start, today, g), ""]
-            + render_tempo(weekly, start, ink, g) + [""]
+            + render_tempo(weekly, start, clamped, ink, g) + [""]
             + render_clock(punch_card(commits), ink, g) + [""]
             + render_streaks(best, best_start, best_end, current, anchor,
                              max(days), ink, g) + [""]
