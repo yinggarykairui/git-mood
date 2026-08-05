@@ -208,7 +208,7 @@ def run_git(args, timeout=120):
 def check_directory(path):
     """Say which of the three ways a path can fail actually happened."""
     try:
-        mode = os.stat(path).st_mode
+        os.stat(path)
     except FileNotFoundError:
         raise EnvProblem("no such directory: %s" % oneline(path))
     except NotADirectoryError:
@@ -218,14 +218,10 @@ def check_directory(path):
     except OSError as exc:
         raise EnvProblem("cannot read %s: %s" % (oneline(path, 30),
                                                  oneline(exc.strerror, 30)))
-    if not stat_isdir(mode):
+    if not os.path.isdir(path):
         raise EnvProblem("not a directory: %s" % oneline(path))
     if not os.access(path, os.R_OK | os.X_OK):
         raise EnvProblem("permission denied: %s" % oneline(path))
-
-
-def stat_isdir(mode):
-    return (mode & 0o170000) == 0o040000
 
 
 def resolve_repo(path):
@@ -508,7 +504,8 @@ def count(n, word):
 
 
 def ramp_glyph(value, top, ramp):
-    """0 falls to the bottom of the ramp; the rest quantize against the max."""
+    """Quantize against the panel's own maximum. Zero never reaches here:
+    both panels have a zero glyph of their own."""
     if value <= 0 or top <= 0:
         return ramp[0]
     index = int(math.ceil(value * len(ramp) / float(top)))
