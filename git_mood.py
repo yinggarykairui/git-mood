@@ -91,9 +91,15 @@ class EnvProblem(Exception):
 # argument parsing
 # --------------------------------------------------------------------------
 
+def tame(text):
+    """Control characters out. A repo directory named with an embedded ESC
+    would otherwise recolor the caller's terminal from our own header."""
+    return "".join("?" if ch < " " or ch == "\x7f" else ch for ch in str(text))
+
+
 def oneline(text, limit=60):
     """Errors are one line, so user data never breaks the format."""
-    flat = " ".join(str(text).split())
+    flat = tame(" ".join(str(text).split()))
     return flat if len(flat) <= limit else flat[:limit - 3] + "..."
 
 
@@ -199,14 +205,48 @@ def run_git(args, timeout=120):
         raise EnvProblem("could not run git: %s" % oneline(exc))
 
 
-def resolve_repo(path):
-    if not os.path.isdir(path):
+def check_directory(path):
+    """Say which of the three ways a path can fail actually happened."""
+    try:
+        mode = os.stat(path).st_mode
+    except FileNotFoundError:
         raise EnvProblem("no such directory: %s" % oneline(path))
+    except NotADirectoryError:
+        raise EnvProblem("not a directory: %s" % oneline(path))
+    except PermissionError:
+        raise EnvProblem("permission denied: %s" % oneline(path))
+    except OSError as exc:
+        raise EnvProblem("cannot read %s: %s" % (oneline(path, 30),
+                                                 oneline(exc.strerror, 30)))
+    if not stat_isdir(mode):
+        raise EnvProblem("not a directory: %s" % oneline(path))
+    if not os.access(path, os.R_OK | os.X_OK):
+        raise EnvProblem("permission denied: %s" % oneline(path))
+
+
+def stat_isdir(mode):
+    return (mode & 0o170000) == 0o040000
+
+
+def resolve_repo(path):
+    """Return the directory whose basename names the repo in the header.
+
+    A bare repo has no work tree, so --show-toplevel fails there; fall back to
+    the git directory itself rather than calling it "not a repository".
+    """
+    check_directory(path)
     done = run_git(["-C", path, "rev-parse", "--show-toplevel"])
+    if done.returncode == 0:
+        top = done.stdout.decode("utf-8", "replace").strip()
+        if top:
+            return top
+    done = run_git(["-C", path, "rev-parse", "--git-dir"])
     if done.returncode != 0:
         raise EnvProblem("not a git repository: %s" % oneline(path))
-    top = done.stdout.decode("utf-8", "replace").strip()
-    return top or os.path.abspath(path)
+    git_dir = done.stdout.decode("utf-8", "replace").strip()
+    top = os.path.abspath(os.path.join(path, git_dir))
+    # `.../repo/.git` names the repo `repo`; `.../repo.git` names itself.
+    return os.path.dirname(top) if os.path.basename(top) == ".git" else top
 
 
 def has_commits(top):
@@ -627,7 +667,7 @@ def emit(text, ascii_=False):
 
 def build(opts, today, g, ink):
     top = resolve_repo(opts.path)
-    name = os.path.basename(top.rstrip(os.sep)) or top
+    name = tame(os.path.basename(top.rstrip(os.sep)) or top)
     head = render_head(name, g)
 
     if not has_commits(top):
