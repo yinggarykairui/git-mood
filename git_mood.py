@@ -1,13 +1,550 @@
 #!/usr/bin/env python3
-"""git-mood - a terminal mood chart for a git repository."""
+"""git-mood - a terminal mood chart for a git repository.
 
+One file, standard library only. One `git log` call in, four panels out.
+Stat functions take commits and return numbers; render functions take numbers
+and return strings. Nothing computes and renders at the same time.
+"""
+
+import math
+import os
+import signal
+import subprocess
+import sys
+from collections import namedtuple
+from datetime import date, timedelta
+
+PROG = "git-mood"
 VERSION = "1.0"
+
+# Exit codes are part of the CLI contract: 0 a chart or a clean "nothing to
+# chart", 1 environment, 2 usage, 130 Ctrl-C.
+EXIT_ENV = 1
+EXIT_USAGE = 2
+EXIT_INTERRUPT = 130
+
+HELP = """git-mood — a terminal mood chart for a git repository
+
+usage: git-mood [path] [options]
+
+  path              a git repository, or any directory inside one
+                    (default: the current directory)
+
+options:
+  -w, --weeks N     how many weeks back to read (default: 26, max: 520)
+  -a, --all         read the entire history; wins over --weeks
+      --author STR  only commits whose author name or email contains STR
+                    (case-insensitive substring, not a pattern)
+      --ascii       draw with plain ASCII instead of block characters
+      --no-color    never emit ANSI color (also honors NO_COLOR)
+  -h, --help        show this and exit
+  -V, --version     show the version and exit
+
+Times are the author's own local clock, exactly as recorded in each commit.
+Nothing is converted to your timezone.
+
+The mood tags are nicknames for numbers, not psychology. Every tag prints
+the number and the threshold that produced it, so you can disagree with it.
+"""
+
+MAX_WEEKS = 520
+GUTTER = 8           # width of the "tempo   " / "clock   " label column
+INDENT = " " * GUTTER
+GRID_COLS = 52       # sparkline never grows past this; it buckets instead
+DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+RULER = "0  3  6  9  12 15 18 21 "   # exactly 24 columns, one per hour
+
+GLYPHS = {
+    "spark": "▁▂▃▄▅▆▇█",
+    "grid_zero": "·",
+    "grid": "░▒▓█",
+    "rule": "─",
+    "sep": " · ",
+    "arrow": "→",
+    "dash": "—",
+}
+ASCII_GLYPHS = {
+    "spark": ".:-=+*#%",
+    "grid_zero": ".",
+    "grid": "-=+#",
+    "rule": "-",
+    "sep": " | ",
+    "arrow": "->",
+    "dash": "-",
+}
+
+Commit = namedtuple("Commit", "date hour weekday name email")
+Options = namedtuple("Options", "path weeks whole author ascii_ color")
+
+
+class Usage(Exception):
+    """Bad command line. Exit 2, with a pointer at --help."""
+
+
+class EnvProblem(Exception):
+    """No git, no directory, no repo, or git itself failed. Exit 1."""
+
+
+# --------------------------------------------------------------------------
+# argument parsing
+# --------------------------------------------------------------------------
+
+def oneline(text, limit=60):
+    """Errors are one line, so user data never breaks the format."""
+    flat = " ".join(str(text).split())
+    return flat if len(flat) <= limit else flat[:limit - 3] + "..."
+
+
+def take_value(flag, inline, argv, i):
+    """Return (value, next index) for both `--flag=v` and `--flag v`."""
+    if inline is not None:
+        return inline, i
+    if i >= len(argv):
+        raise Usage("%s needs a value" % flag)
+    return argv[i], i + 1
+
+
+def parse_weeks(raw):
+    try:
+        n = int(raw)
+    except ValueError:
+        raise Usage('--weeks needs an integer from 1 to %d, got "%s"'
+                    % (MAX_WEEKS, oneline(raw, 24)))
+    if not 1 <= n <= MAX_WEEKS:
+        raise Usage('--weeks must be from 1 to %d, got "%s"'
+                    % (MAX_WEEKS, oneline(raw, 24)))
+    return n
+
+
+def parse_args(argv):
+    """Hand-rolled so --help is a verbatim string and every input is spec'd.
+
+    Clustering (`-aw 4`) is deliberately not split; it reports as an unknown
+    option rather than guessing.
+    """
+    path, weeks, whole, author, ascii_, color = None, 26, False, None, False, True
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        i += 1
+        flag, eq, inline = arg.partition("=")
+        inline = inline if eq else None
+        if arg in ("-h", "--help"):
+            sys.stdout.write(HELP)
+            raise SystemExit(0)
+        elif arg in ("-V", "--version"):
+            sys.stdout.write("%s %s\n" % (PROG, VERSION))
+            raise SystemExit(0)
+        elif arg in ("-a", "--all"):
+            whole = True
+        elif arg == "--ascii":
+            ascii_ = True
+        elif arg == "--no-color":
+            color = False
+        elif flag in ("-w", "--weeks"):
+            raw, i = take_value("--weeks", inline, argv, i)
+            weeks = parse_weeks(raw)
+        elif flag == "--author":
+            author, i = take_value("--author", inline, argv, i)
+        elif arg.startswith("-") and arg != "-":
+            raise Usage("unknown option: %s" % oneline(arg, 24))
+        elif path is None:
+            path = arg
+        else:
+            raise Usage("unexpected argument: %s" % oneline(arg, 24))
+    return Options(path or ".", weeks, whole, author, ascii_, color)
+
+
+# --------------------------------------------------------------------------
+# reading git
+# --------------------------------------------------------------------------
+
+def run_git(args, timeout=120):
+    env = dict(os.environ)
+    # As the `git mood` subcommand git exports these; left in place they make
+    # the child read the caller's repo instead of the path argument.
+    for var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_PREFIX"):
+        env.pop(var, None)
+    cmd = ["git", "-c", "log.showSignature=false", "-c", "color.ui=false"] + args
+    try:
+        return subprocess.run(cmd, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, env=env, timeout=timeout)
+    except OSError:
+        raise EnvProblem("git not found on PATH")
+    except subprocess.TimeoutExpired:
+        raise EnvProblem("git timed out after %d seconds" % timeout)
+
+
+def resolve_repo(path):
+    if not os.path.isdir(path):
+        raise EnvProblem("no such directory: %s" % oneline(path))
+    done = run_git(["-C", path, "rev-parse", "--show-toplevel"])
+    if done.returncode != 0:
+        raise EnvProblem("not a git repository: %s" % oneline(path))
+    top = done.stdout.decode("utf-8", "replace").strip()
+    return top or os.path.abspath(path)
+
+
+def has_commits(top):
+    """A fresh `git init` is not an error, so ask before running the log."""
+    return run_git(["-C", top, "rev-parse", "--quiet", "--verify",
+                    "HEAD"]).returncode == 0
+
+
+def read_commits(top, since):
+    """The one `git log` call. Bytes in, Commit list out."""
+    args = ["-C", top, "log", "--pretty=format:%aI%x1f%aN%x1f%aE%x1e"]
+    if since is not None:
+        args.append("--since=%s" % since.isoformat())
+    done = run_git(args)
+    if done.returncode != 0:
+        raise EnvProblem("git log failed: %s"
+                         % oneline(done.stderr.decode("utf-8", "replace")))
+    commits = []
+    for record in done.stdout.decode("utf-8", "replace").split("\x1e"):
+        record = record.lstrip("\r\n")
+        if not record:
+            continue
+        fields = record.split("\x1f")
+        if len(fields) != 3:
+            continue
+        stamp, name, email = fields
+        try:
+            day = date.fromisoformat(stamp[:10])
+            hour = int(stamp[11:13])
+        except (ValueError, IndexError):
+            continue
+        if not 0 <= hour <= 23:
+            continue
+        commits.append(Commit(day, hour, day.weekday(), name, email))
+    return commits
+
+
+# --------------------------------------------------------------------------
+# stats: commits in, numbers out
+# --------------------------------------------------------------------------
+
+def window_start(weeks, whole, days, today):
+    """Monday-aligned, so 'the week of <date>' always names a Monday.
+
+    Returns (start Monday, number of weeks). The window ends today; commits
+    dated in the future clamp into the newest bucket.
+    """
+    monday = today - timedelta(days=today.weekday())
+    if whole:
+        first = min(days) if days else today
+        start = min(first - timedelta(days=first.weekday()), monday)
+        return start, (monday - start).days // 7 + 1
+    return monday - timedelta(days=7 * (weeks - 1)), weeks
+
+
+def weekly_counts(commits, start, nweeks):
+    weekly = [0] * nweeks
+    for commit in commits:
+        index = (commit.date - start).days // 7
+        weekly[min(max(index, 0), nweeks - 1)] += 1
+    return weekly
+
+
+def punch_card(commits):
+    grid = [[0] * 24 for _ in range(7)]
+    for commit in commits:
+        grid[commit.weekday][commit.hour] += 1
+    return grid
+
+
+def streaks(days, today):
+    """Return (longest, its start, its end, current, current end)."""
+    ordered = sorted(days)
+    best, best_start, best_end = 0, None, None
+    run, run_start, prev = 0, None, None
+    for day in ordered:
+        if prev is not None and (day - prev).days == 1:
+            run += 1
+        else:
+            run, run_start = 1, day
+        if run > best:
+            best, best_start, best_end = run, run_start, day
+        prev = day
+    anchor = None
+    for candidate in (today, today - timedelta(days=1)):
+        if candidate in days:
+            anchor = candidate
+            break
+    current, cursor = 0, anchor
+    while cursor is not None and cursor in days:
+        current += 1
+        cursor -= timedelta(days=1)
+    return best, best_start, best_end, current, anchor
+
+
+def percent(part, total):
+    return int(part * 100.0 / total + 0.5)
+
+
+def median(values):
+    ordered = sorted(values)
+    n = len(ordered)
+    if n == 0:
+        return 0.0
+    mid = n // 2
+    if n % 2:
+        return float(ordered[mid])
+    return (ordered[mid - 1] + ordered[mid]) / 2.0
+
+
+def mood(commits, weekly, nweeks, current, last_day, today):
+    """Up to three tags, each with exactly one evidence line.
+
+    Thresholds are tested against the *rounded* number that gets printed, so
+    the evidence always satisfies the line it quotes.
+    """
+    tags, evidence = [], []
+    total = len(commits)
+    nonempty = [w for w in weekly if w > 0]
+    mid = median(nonempty)
+    peak = max(weekly) if weekly else 0
+    ratio = round(peak / mid, 1) if mid else 0.0
+
+    night = percent(sum(1 for c in commits if c.hour < 6), total)
+    weekend = percent(sum(1 for c in commits if c.weekday >= 5), total)
+    office = percent(sum(1 for c in commits
+                         if c.weekday < 5 and 9 <= c.hour < 18), total)
+    covered = percent(len(nonempty), nweeks)
+    idle = (today - last_day).days
+
+    candidates = [
+        (night >= 20, "nocturnal",
+         "%d%% of commits land between 00:00 and 05:59 (line: 20%%)" % night),
+        (weekend >= 25, "weekend-coded",
+         "%d%% of commits land on a Saturday or Sunday (line: 25%%)" % weekend),
+        (office >= 60, "nine-to-five",
+         "%d%% of commits land Mon-Fri, 09:00-17:59 (line: 60%%)" % office),
+        (len(nonempty) >= 4 and ratio >= 3.0, "burst-driven",
+         "the busiest week holds %.1fx the median week (line: 3x)" % ratio),
+        (nweeks >= 4 and covered >= 60 and ratio < 2.0, "metronomic",
+         "%d of %d weeks have a commit, top week %.1fx the median "
+         "(line: 60%% and 2x)" % (len(nonempty), nweeks, ratio)),
+        (current >= 5, "on a tear",
+         "%d days in a row with at least one commit (line: 5)" % current),
+        (idle >= 21, "dormant",
+         "nothing committed in %d days (line: 21)" % idle),
+    ]
+    for fired, tag, line in candidates:
+        if fired:
+            tags.append(tag)
+            evidence.append(line)
+        if len(tags) == 3:
+            break
+    if not tags:
+        tags.append("unremarkable")
+        evidence.append("nothing in these numbers crosses a line")
+    return tags, evidence
+
+
+# --------------------------------------------------------------------------
+# rendering: numbers in, strings out
+# --------------------------------------------------------------------------
+
+class Ink(object):
+    """Three uses of color, or none at all."""
+
+    def __init__(self, enabled):
+        self.enabled = enabled
+
+    def _wrap(self, code, text):
+        return "\x1b[%sm%s\x1b[0m" % (code, text) if self.enabled else text
+
+    def dim(self, text):
+        return self._wrap("2", text)
+
+    def bold(self, text):
+        return self._wrap("1", text)
+
+    def accent(self, text):
+        return self._wrap("36", text)
+
+
+def color_enabled(opts):
+    if not opts.color:
+        return False
+    if os.environ.get("NO_COLOR") is not None:
+        return False
+    if os.environ.get("TERM") == "dumb":
+        return False
+    try:
+        return bool(sys.stdout.isatty())
+    except (AttributeError, ValueError):
+        return False
+
+
+def ascii_only(opts, glyphs):
+    if opts.ascii_:
+        return True
+    encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+    try:
+        "".join(glyphs.values()).encode(encoding)
+    except (UnicodeEncodeError, LookupError):
+        return True
+    return False
+
+
+def count(n, word):
+    return "%s %s" % ("{:,}".format(n), word if n == 1 else word + "s")
+
+
+def ramp_glyph(value, top, ramp):
+    """0 falls to the bottom of the ramp; the rest quantize against the max."""
+    if value <= 0 or top <= 0:
+        return ramp[0]
+    index = int(math.ceil(value * len(ramp) / float(top)))
+    return ramp[min(max(index, 1), len(ramp)) - 1]
+
+
+def cell_glyph(value, top, g):
+    if value <= 0:
+        return g["grid_zero"]
+    return ramp_glyph(value, top, g["grid"])
+
+
+def gutter(label):
+    return label.ljust(GUTTER)
+
+
+def render_head(name, g):
+    return ["%s  %s" % (PROG, name), g["rule"] * 60]
+
+
+def render_summary(commits, opts, nweeks, start, today, g):
+    if opts.author:
+        who = 'filtered to "%s"' % oneline(opts.author, 30)
+    else:
+        who = count(len(set(c.email.lower() for c in commits)), "author")
+    span = "%s %s %s" % (start.isoformat(), g["arrow"], today.isoformat())
+    return g["sep"].join([count(len(commits), "commit"), who,
+                          count(nweeks, "week"), span])
+
+
+def render_tempo(weekly, start, ink, g):
+    nweeks = len(weekly)
+    size = int(math.ceil(nweeks / float(GRID_COLS)))
+    columns = [sum(weekly[i:i + size]) for i in range(0, nweeks, size)]
+    top = max(columns)
+    bar = "".join(ramp_glyph(c, top, g["spark"]) for c in columns)
+    peak = max(weekly)
+    peak_week = start + timedelta(days=7 * weekly.index(peak))
+    return [
+        ink.dim(gutter("tempo")) + bar,
+        ink.dim(INDENT + "one column = %s%s%.1f commits/week"
+                % (count(size, "week"), g["sep"], sum(weekly) / float(nweeks))),
+        ink.dim(INDENT + "peak %d in the week of %s" % (peak, peak_week.isoformat())),
+    ]
+
+
+def render_clock(grid, ink, g):
+    top = max(max(row) for row in grid)
+    lines = [ink.dim((gutter("clock") + "     " + RULER).rstrip())]
+    for index, day in enumerate(DAYS):
+        cells = [cell_glyph(v, top, g) for v in grid[index]]
+        # Hours 00:00-05:59 carry the one accent color, so a late-night spike
+        # is visible without reading the ruler.
+        lines.append(ink.dim(INDENT + day + "  ")
+                     + ink.accent("".join(cells[:6])) + "".join(cells[6:]))
+    lines.append(ink.dim(INDENT + "one cell per hour of the week" + g["sep"]
+                         + "darkest = %s" % count(top, "commit")))
+    lines.append(ink.dim(INDENT + "author-local time, exactly as recorded "
+                                  "in each commit"))
+    return lines
+
+
+def render_streaks(best, best_start, best_end, current, anchor, last_day, ink, g):
+    longest = "longest %s, %s %s %s" % (count(best, "day"),
+                                        best_start.isoformat(), g["arrow"],
+                                        best_end.isoformat())
+    if current:
+        now = "current %s, through %s" % (count(current, "day"),
+                                          anchor.isoformat())
+    else:
+        now = "current none, last commit %s" % last_day.isoformat()
+    return [ink.dim(gutter("streaks")) + longest, INDENT + now]
+
+
+def render_mood(tags, evidence, ink, g):
+    lines = [ink.dim(gutter("mood"))
+             + g["sep"].join(ink.bold(tag) for tag in tags)]
+    lines.extend(INDENT + line for line in evidence)
+    return lines
+
+
+# --------------------------------------------------------------------------
+# wiring
+# --------------------------------------------------------------------------
+
+def build(opts, today):
+    top = resolve_repo(opts.path)
+    name = os.path.basename(top.rstrip(os.sep)) or top
+    g = ASCII_GLYPHS if ascii_only(opts, GLYPHS) else GLYPHS
+    ink = Ink(color_enabled(opts))
+    head = render_head(name, g)
+
+    if not has_commits(top):
+        return head + ["", "no commits yet %s nothing to chart." % g["dash"]]
+
+    monday = today - timedelta(days=today.weekday())
+    since = None
+    if not opts.whole:
+        # --since filters on committer date, so read a week extra and cut
+        # precisely on author date below.
+        since = monday - timedelta(days=7 * opts.weeks + 7)
+    commits = read_commits(top, since)
+    if not commits and opts.whole:
+        return head + ["", "no commits yet %s nothing to chart." % g["dash"]]
+
+    start, nweeks = window_start(opts.weeks, opts.whole,
+                                 [c.date for c in commits], today)
+    commits = [c for c in commits if c.date >= start]
+    if not commits:
+        return head + ["", "no commits in the last %s. try --all."
+                       % count(nweeks, "week")]
+    if opts.author:
+        needle = opts.author.lower()
+        commits = [c for c in commits
+                   if needle in ("%s <%s>" % (c.name, c.email)).lower()]
+        if not commits:
+            return head + ["", 'no commits by "%s" in this window. try --all.'
+                           % oneline(opts.author, 30)]
+
+    weekly = weekly_counts(commits, start, nweeks)
+    days = set(c.date for c in commits)
+    best, best_start, best_end, current, anchor = streaks(days, today)
+    tags, evidence = mood(commits, weekly, nweeks, current, max(days), today)
+
+    return (head
+            + [render_summary(commits, opts, nweeks, start, today, g), ""]
+            + render_tempo(weekly, start, ink, g) + [""]
+            + render_clock(punch_card(commits), ink, g) + [""]
+            + render_streaks(best, best_start, best_end, current, anchor,
+                             max(days), ink, g) + [""]
+            + render_mood(tags, evidence, ink, g))
 
 
 def main(argv):
-    raise NotImplementedError
+    # Without this, `git-mood | head -3` raises BrokenPipeError on exit.
+    if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    try:
+        lines = build(parse_args(argv), date.today())
+        sys.stdout.write("\n".join(lines) + "\n")
+    except Usage as exc:
+        sys.stderr.write("%s: %s; try: %s --help\n" % (PROG, exc, PROG))
+        return EXIT_USAGE
+    except EnvProblem as exc:
+        sys.stderr.write("%s: %s\n" % (PROG, exc))
+        return EXIT_ENV
+    except KeyboardInterrupt:
+        return EXIT_INTERRUPT
+    return 0
 
 
 if __name__ == "__main__":
-    import sys
-    main(sys.argv[1:])
+    sys.exit(main(sys.argv[1:]))
