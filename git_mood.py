@@ -50,7 +50,7 @@ the number and the threshold that produced it, so you can disagree with it.
 MAX_WEEKS = 520
 GUTTER = 8           # width of the "tempo   " / "clock   " label column
 INDENT = " " * GUTTER
-GRID_COLS = 52       # sparkline never grows past this; it buckets instead
+SPARK_COLS = 52       # sparkline never grows past this; it buckets instead
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 RULER = "0  3  6  9  12 15 18 21 "   # exactly 24 columns, one per hour
 
@@ -169,10 +169,12 @@ def run_git(args, timeout=120):
     try:
         return subprocess.run(cmd, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, env=env, timeout=timeout)
-    except OSError:
+    except FileNotFoundError:
         raise EnvProblem("git not found on PATH")
     except subprocess.TimeoutExpired:
         raise EnvProblem("git timed out after %d seconds" % timeout)
+    except OSError as exc:
+        raise EnvProblem("could not run git: %s" % oneline(exc))
 
 
 def resolve_repo(path):
@@ -427,7 +429,7 @@ def render_summary(commits, opts, nweeks, start, today, g):
 
 def render_tempo(weekly, start, ink, g):
     nweeks = len(weekly)
-    size = int(math.ceil(nweeks / float(GRID_COLS)))
+    size = int(math.ceil(nweeks / float(SPARK_COLS)))
     columns = [sum(weekly[i:i + size]) for i in range(0, nweeks, size)]
     top = max(columns)
     bar = "".join(ramp_glyph(c, top, g["spark"]) for c in columns)
@@ -480,11 +482,23 @@ def render_mood(tags, evidence, ink, g):
 # wiring
 # --------------------------------------------------------------------------
 
-def build(opts, today):
+def write(stream, text, ascii_):
+    """A repo or author name can hold characters the stream cannot encode.
+
+    Replace them instead of raising; under --ascii force plain ASCII so the
+    whole output stays below U+0080 whatever the repo is called.
+    """
+    encoding = "ascii" if ascii_ else (getattr(stream, "encoding", None) or "utf-8")
+    try:
+        text = text.encode(encoding, "replace").decode(encoding, "replace")
+    except LookupError:
+        text = text.encode("ascii", "replace").decode("ascii")
+    stream.write(text)
+
+
+def build(opts, today, g, ink):
     top = resolve_repo(opts.path)
     name = os.path.basename(top.rstrip(os.sep)) or top
-    g = ASCII_GLYPHS if ascii_only(opts, GLYPHS) else GLYPHS
-    ink = Ink(color_enabled(opts))
     head = render_head(name, g)
 
     if not has_commits(top):
@@ -533,13 +547,17 @@ def main(argv):
     if hasattr(signal, "SIGPIPE"):
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     try:
-        lines = build(parse_args(argv), date.today())
-        sys.stdout.write("\n".join(lines) + "\n")
+        opts = parse_args(argv)
+        plain = ascii_only(opts, GLYPHS)
+        lines = build(opts, date.today(),
+                      ASCII_GLYPHS if plain else GLYPHS,
+                      Ink(color_enabled(opts)))
+        write(sys.stdout, "\n".join(lines) + "\n", opts.ascii_)
     except Usage as exc:
-        sys.stderr.write("%s: %s; try: %s --help\n" % (PROG, exc, PROG))
+        write(sys.stderr, "%s: %s; try: %s --help\n" % (PROG, exc, PROG), True)
         return EXIT_USAGE
     except EnvProblem as exc:
-        sys.stderr.write("%s: %s\n" % (PROG, exc))
+        write(sys.stderr, "%s: %s\n" % (PROG, exc), True)
         return EXIT_ENV
     except KeyboardInterrupt:
         return EXIT_INTERRUPT
