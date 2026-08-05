@@ -193,11 +193,15 @@ def has_commits(top):
                     "HEAD"]).returncode == 0
 
 
-def read_commits(top, since):
-    """The one `git log` call. Bytes in, Commit list out."""
+def read_commits(top):
+    """The one `git log` call. Bytes in, Commit list out.
+
+    No `--since` prefilter: it cuts on *committer* date, so a rebased or
+    grafted commit whose author date is inside the window would vanish from a
+    windowed run but show up under --all. The author-date filter in build() is
+    the only authority on membership, so every panel counts the same commits.
+    """
     args = ["-C", top, "log", "--pretty=format:%aI%x1f%aN%x1f%aE%x1e"]
-    if since is not None:
-        args.append("--since=%s" % since.isoformat())
     done = run_git(args)
     if done.returncode != 0:
         raise EnvProblem("git log failed: %s"
@@ -504,14 +508,8 @@ def build(opts, today, g, ink):
     if not has_commits(top):
         return head + ["", "no commits yet %s nothing to chart." % g["dash"]]
 
-    monday = today - timedelta(days=today.weekday())
-    since = None
-    if not opts.whole:
-        # --since filters on committer date, so read a week extra and cut
-        # precisely on author date below.
-        since = monday - timedelta(days=7 * opts.weeks + 7)
-    commits = read_commits(top, since)
-    if not commits and opts.whole:
+    commits = read_commits(top)
+    if not commits:
         return head + ["", "no commits yet %s nothing to chart." % g["dash"]]
 
     start, nweeks = window_start(opts.weeks, opts.whole,
