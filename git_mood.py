@@ -73,8 +73,11 @@ ASCII_GLYPHS = {
     # it (the same low-ink mark the punch card uses for an empty cell), then
     # a baseline stroke for the shortest bar. The old set had these two the
     # other way round, so an --ascii sparkline drew dead weeks as solid bars
-    # and busy weeks as gaps - the picture upside down.
-    "spark": "_:-=+*#%",
+    # and busy weeks as gaps - the picture upside down. The top of the ramp
+    # was inverted too: "%" carries less ink than "#" in every monospace
+    # face, so the tallest bar - the one the caption points at - printed
+    # lighter than the bar beside it. "#" is the top step.
+    "spark": "_:-=+*%#",
     "spark_zero": ".",
     "grid_zero": ".",
     "grid": "-=+#",
