@@ -11,6 +11,7 @@ import os
 import signal
 import subprocess
 import sys
+import unicodedata
 from collections import namedtuple
 from datetime import date, timedelta
 
@@ -107,6 +108,26 @@ def oneline(text, limit=60):
     """Errors are one line, so user data never breaks the format."""
     flat = tame(" ".join(str(text).split()))
     return flat if len(flat) <= limit else flat[:limit - 3] + "..."
+
+
+def display_width(text):
+    """Terminal cells, not codepoints. A rule sized in codepoints came up
+    short under any name holding wide characters: five party poppers are five
+    codepoints and ten cells, so the rule drew 68 under a 73-cell line."""
+    width = 0
+    for ch in text:
+        if unicodedata.combining(ch):
+            continue
+        width += 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+    return width
+
+
+def fit(text, cells):
+    """oneline(), measured in cells, so the result really is that wide."""
+    flat = oneline(text, cells)
+    while len(flat) > 3 and display_width(flat) > cells:
+        flat = flat[:len(flat) - 4] + "..."
+    return flat
 
 
 def flag_shaped(arg):
@@ -628,21 +649,38 @@ def render_head(name, summary, g):
     The name is cut to fit that 60, since a repo directory is free to be 120
     characters long and was hanging that far past its own rule.
     """
-    title = "%s  %s" % (PROG, oneline(name, 60 - len(PROG) - 2))
-    lines = [title, g["rule"] * max(60, len(summary))]
+    title = "%s  %s" % (PROG, fit(name, 60 - len(PROG) - 2))
+    lines = [title, g["rule"] * max(60, display_width(summary))]
     return lines + [summary] if summary else lines
 
 
 def render_summary(commits, opts, nweeks, start, today, g):
-    if opts.author is not None:
+    """One line, and never wider than 80 cells: the rule is drawn to match it.
+
+    Only the filter text is elastic, so it is the one that gives way. Cutting
+    it to a flat 30 characters was not enough - the rest of the line is 49
+    cells before the author has said a word, and a 30-character name pushed
+    the whole thing, and the rule under it, to 93.
+    """
+    span = "%s %s %s" % (start.isoformat(), g["arrow"], today.isoformat())
+    rest = [count(len(commits), "commit"), count(nweeks, "week"), span]
+    if opts.author is None:
+        who = count(len(set(c.email.lower() for c in commits)), "author")
+    else:
         # "was the flag given", not "is the value truthy": --author= is a
         # filter to the empty string, not an absent filter.
-        who = 'filtered to "%s"' % oneline(opts.author, 30)
-    else:
-        who = count(len(set(c.email.lower() for c in commits)), "author")
-    span = "%s %s %s" % (start.isoformat(), g["arrow"], today.isoformat())
-    return g["sep"].join([count(len(commits), "commit"), who,
-                          count(nweeks, "week"), span])
+        room = 80 - display_width(g["sep"].join(rest)) - display_width(g["sep"])
+        if opts.author == "":
+            # The empty string is a substring of every ident, so this filter
+            # is applied and stops nothing. Announcing it without saying so
+            # left the reader hunting for the commits it had removed.
+            who = 'filtered to "" (matches all)'
+            if display_width(who) > room:
+                who = 'filtered to ""'
+        else:
+            who = 'filtered to "%s"' % fit(opts.author,
+                                           min(30, max(4, room - 14)))
+    return g["sep"].join([rest[0], who] + rest[1:])
 
 
 def bucket_columns(weekly, size):
