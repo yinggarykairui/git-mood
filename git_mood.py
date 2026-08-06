@@ -135,21 +135,28 @@ def flag_shaped(arg):
     return len(arg) > 1 and arg[0] == "-" and (arg[1] == "-" or arg[1].isalpha())
 
 
-def take_value(flag, inline, argv, i):
+def take_value(flag, inline, argv, i, literal=""):
     """Return (value, next index) for both `--flag=v` and `--flag v`.
 
     `flag` is the token the user actually typed, so `-w` never reports itself
     as `--weeks`. A following flag is refused rather than eaten: swallowing it
     used to produce advice ("try --all") naming the flag it had just consumed.
+
+    `literal` is what the flag would do with a value shaped like a flag, if
+    anything. `--weeks --all` used to advise `--weeks=--all`, which fails on
+    the next line with `got "--all"`; advice that does not work is worse than
+    none, so only the flags that can take such a value offer it.
     """
     if inline is not None:
         return inline, i
     if i >= len(argv):
         raise Usage("%s needs a value" % flag)
     if flag_shaped(argv[i]):
-        raise Usage("%s needs a value; %s is a flag (use %s=%s to mean it "
-                    "literally)" % (flag, oneline(argv[i], 24), flag,
-                                    oneline(argv[i], 24)))
+        seen = oneline(argv[i], 24)
+        note = "%s needs a value; %s is a flag" % (flag, seen)
+        if literal:
+            note += " (use %s=%s to %s)" % (flag, seen, literal)
+        raise Usage(note)
     return argv[i], i + 1
 
 
@@ -200,7 +207,8 @@ def parse_args(argv):
             raw, i = take_value(flag, inline, argv, i)
             weeks = parse_weeks(raw)
         elif flag == "--author":
-            author, i = take_value(flag, inline, argv, i)
+            author, i = take_value(flag, inline, argv, i,
+                                   "search for it as text")
         elif arg.startswith("-") and arg != "-":
             raise Usage("unknown option: %s" % oneline(arg, 24))
         elif path is None:
@@ -899,9 +907,15 @@ def build(opts, today, g, ink):
         commits = [c for c in commits
                    if needle in ("%s <%s>" % (c.name, c.email)).lower()]
         if not commits:
+            # A needle that matched nobody at all is not a window problem,
+            # so "try --all." on its own was pointing at the wrong knob.
+            fix = " try --all, or a shorter --author." if advice \
+                  else " try a shorter --author."
+            shape = 'no commits by "%s" in %s.%s'
+            room = 80 - display_width(shape % ("", where, fix))
             return page(render_summary([], opts, nweeks, start, today, g),
-                        'no commits by "%s" in %s.%s'
-                        % (oneline(opts.author, 30), where, advice))
+                        shape % (fit(opts.author, max(4, min(30, room))),
+                                 where, fix))
 
     weekly = weekly_counts(commits, start, nweeks)
     # Against `today`, not against the Sunday that ends today's week: a commit
