@@ -582,11 +582,16 @@ def render_tempo(weekly, start, clamped, ink, g):
     when = (start + timedelta(days=7 * first)).isoformat()
     where = "the week of %s" % when if span == 1 else \
             "the %s from %s" % (count(span, "week"), when)
+    # bucket_columns leaves the short column, if there is one, at the oldest
+    # end. Saying only "one column = 16 weeks" made that 9-week bar read as a
+    # lull, so the odd column is named whenever it exists.
+    width = count(size, "week")
+    if columns and columns[0][1] != size:
+        width += " (the oldest holds %d)" % columns[0][1]
     lines = [
         ink.dim(gutter("tempo")) + bar,
         ink.dim(INDENT + "one column = %s%s%s commits/week"
-                % (count(size, "week"), g["sep"],
-                   per_week(sum(weekly), nweeks))),
+                % (width, g["sep"], per_week(sum(weekly), nweeks))),
         ink.dim(INDENT + "peak %d in %s" % (peak, where)),
     ]
     if clamped:
