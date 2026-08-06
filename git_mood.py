@@ -988,13 +988,16 @@ def build(opts, today, g, ink):
         if not commits:
             # A needle that matched nobody at all is not a window problem,
             # so "try --all." on its own was pointing at the wrong knob.
+            #
+            # The needle is not echoed a second time. The header three lines
+            # up already prints it, and the two echoes were cut to different
+            # budgets: `filtered to "zzzznobody"` above `no commits by
+            # "zzzzn..."` read as two different searches, and under --all the
+            # second one printed in full so the pair disagreed by invocation.
             fix = " try --all, or a shorter --author." if advice \
                   else " try a shorter --author."
-            shape = 'no commits by "%s" in %s.%s'
-            room = 80 - display_width(shape % ("", where, fix))
             return page(render_summary([], opts, nweeks, start, today, g),
-                        shape % (fit(opts.author, max(4, min(30, room))),
-                                 where, fix))
+                        "nothing matched in %s.%s" % (where, fix))
 
     weekly = weekly_counts(commits, start, nweeks)
     # Against `today`, not against the Sunday that ends today's week: a commit
