@@ -841,7 +841,7 @@ def render_clock(grid, ink, g):
 
 
 def render_streaks(best, best_start, best_end, current, anchor, last_day,
-                   clamped, ink, g):
+                   clamped, today, ink, g):
     """Dates here are the commits' own, never clamped into the window.
 
     The header says the window ends today and tempo folds future-dated
@@ -863,8 +863,13 @@ def render_streaks(best, best_start, best_end, current, anchor, last_day,
         now = "current none, last commit %s" % last_day.isoformat()
     lines = [ink.dim(gutter("streaks")) + longest, INDENT + now]
     if clamped:
-        lines.append(ink.dim(INDENT + "%s dated after today, so these dates "
-                             "can run ahead of it" % count(clamped, "commit")))
+        # The date is spelled out rather than called "it". The nearest thing
+        # for a pronoun to attach to was "today", which made the sentence say
+        # that dates after today can run ahead of today; the date it actually
+        # means is the one ending the header, five lines up and never named.
+        lines.append(ink.dim(INDENT + "%s dated after today; these dates can "
+                             "pass %s" % (count(clamped, "commit"),
+                                          today.isoformat())))
     return lines
 
 
@@ -990,7 +995,7 @@ def build(opts, today, g, ink):
             + render_tempo(weekly, start, clamped, ink, g) + [""]
             + render_clock(punch_card(commits), ink, g) + [""]
             + render_streaks(best, best_start, best_end, current, anchor,
-                             max(days), clamped, ink, g) + [""]
+                             max(days), clamped, today, ink, g) + [""]
             + render_mood(tags, evidence, ink, g))
 
 
