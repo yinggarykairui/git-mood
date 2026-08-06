@@ -206,6 +206,19 @@ def run_git(args, timeout=120):
         raise EnvProblem("could not run git: %s" % oneline(exc))
 
 
+def git_says(done, limit=120):
+    """git's own first line of complaint, or "" when it said nothing.
+
+    Only the first line: the rest of a git error is usually a worked example
+    indented under it, and this program's errors are one line each.
+    """
+    for line in done.stderr.decode("utf-8", "replace").splitlines():
+        line = line.strip()
+        if line:
+            return oneline(line, limit)
+    return ""
+
+
 def check_directory(path):
     """Say which of the three ways a path can fail actually happened."""
     try:
@@ -239,6 +252,13 @@ def resolve_repo(path):
             return top
     done = run_git(["-C", path, "rev-parse", "--git-dir"])
     if done.returncode != 0:
+        # Relabelling every nonzero exit "not a git repository" told the
+        # owner of a repo they cannot read that their repo is not a repo.
+        # git's own sentence carries the reason and, for the everyday case
+        # of a directory owned by somebody else, names the fix.
+        reason = git_says(done)
+        if reason and "not a git repository" not in reason.lower():
+            raise EnvProblem("git says: %s" % reason)
         raise EnvProblem("not a git repository: %s" % oneline(path))
     git_dir = done.stdout.decode("utf-8", "replace").strip()
     top = os.path.abspath(os.path.join(path, git_dir))
@@ -271,7 +291,7 @@ def read_commits(top):
     done = run_git(args)
     if done.returncode != 0:
         raise EnvProblem("git log failed: %s"
-                         % oneline(done.stderr.decode("utf-8", "replace")))
+                         % (git_says(done) or "no reason given"))
     return parse_log(done.stdout.decode("utf-8", "replace"))
 
 
