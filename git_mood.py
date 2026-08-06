@@ -298,17 +298,20 @@ def check_directory(path):
 
 
 def resolve_repo(path):
-    """Return the directory whose basename names the repo in the header.
+    """Return (directory whose basename names the repo, is it the git dir).
 
     A bare repo has no work tree, so --show-toplevel fails there; fall back to
-    the git directory itself rather than calling it "not a repository".
+    the git directory itself rather than calling it "not a repository". The
+    second element is True only in that fallback, because it is the only case
+    where a trailing `.git` is part of the repository's plumbing rather than
+    part of a directory name the user chose.
     """
     check_directory(path)
     done = run_git(["-C", path, "rev-parse", "--show-toplevel"])
     if done.returncode == 0:
         top = done.stdout.decode("utf-8", "replace").strip()
         if top:
-            return top
+            return top, False
     done = run_git(["-C", path, "rev-parse", "--git-dir"])
     if done.returncode != 0:
         # Relabelling every nonzero exit "not a git repository" told the
@@ -322,7 +325,9 @@ def resolve_repo(path):
     git_dir = done.stdout.decode("utf-8", "replace").strip()
     top = os.path.abspath(os.path.join(path, git_dir))
     # `.../repo/.git` names the repo `repo`; `.../repo.git` names itself.
-    return os.path.dirname(top) if os.path.basename(top) == ".git" else top
+    if os.path.basename(top) == ".git":
+        return os.path.dirname(top), False
+    return top, True
 
 
 def has_commits(top):
@@ -884,10 +889,13 @@ def window_words(opts, nweeks):
 
 
 def build(opts, today, g, ink):
-    top = resolve_repo(opts.path)
+    top, is_git_dir = resolve_repo(opts.path)
     name = os.path.basename(top.rstrip(os.sep)) or top
-    if name.endswith(".git") and len(name) > len(".git"):
+    if is_git_dir and name.endswith(".git") and len(name) > len(".git"):
         # A bare repo lives in `name.git`; the repository is still `name`.
+        # Only there, though: a perfectly ordinary work tree may be called
+        # `notbare.git`, and stripping the suffix off that one named a
+        # directory nobody has.
         name = name[:-len(".git")]
     name = tame(name)
 
