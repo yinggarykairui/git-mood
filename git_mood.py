@@ -579,9 +579,18 @@ def bucket_columns(weekly, size):
 
 
 def per_week(total, nweeks):
-    """Enough precision that a real commit never prints as 0.0/week."""
-    average = total / float(nweeks)
-    return "%.1f" % average if average >= 0.1 else "%.2g" % average
+    """One decimal, always, so the number reads the same at both scales.
+
+    Switching to two significant figures under 0.1 printed "0.038 commits/
+    week" next to "8.0 commits/week" elsewhere - two different rules on the
+    same caption line. The reason for the switch stands, though: a repo that
+    really has commits must never print 0.0. So the low end says "<0.1",
+    which is one decimal and still cannot be read as none.
+    """
+    average = total / float(nweeks) if nweeks else 0.0
+    if 0 < average < 0.05:
+        return "<0.1"
+    return "%.1f" % average
 
 
 def render_tempo(weekly, start, clamped, ink, g):
