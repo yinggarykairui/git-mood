@@ -660,7 +660,15 @@ def render_clock(grid, ink, g):
     return lines
 
 
-def render_streaks(best, best_start, best_end, current, anchor, last_day, ink, g):
+def render_streaks(best, best_start, best_end, current, anchor, last_day,
+                   clamped, ink, g):
+    """Dates here are the commits' own, never clamped into the window.
+
+    The header says the window ends today and tempo folds future-dated
+    commits into the newest column, so a streak reported in September beside
+    a header ending in August looked like three panels disagreeing. It is the
+    same disclosure tempo makes, in the panel that needs it.
+    """
     longest = "longest %s, %s %s %s" % (count(best, "day"),
                                         best_start.isoformat(), g["arrow"],
                                         best_end.isoformat())
@@ -669,7 +677,11 @@ def render_streaks(best, best_start, best_end, current, anchor, last_day, ink, g
                                           anchor.isoformat())
     else:
         now = "current none, last commit %s" % last_day.isoformat()
-    return [ink.dim(gutter("streaks")) + longest, INDENT + now]
+    lines = [ink.dim(gutter("streaks")) + longest, INDENT + now]
+    if clamped:
+        lines.append(ink.dim(INDENT + "%s dated after today, so these dates "
+                             "can run ahead of it" % count(clamped, "commit")))
+    return lines
 
 
 def render_mood(tags, evidence, ink, g):
@@ -765,8 +777,10 @@ def build(opts, today, g, ink):
                         % (oneline(opts.author, 30), where, advice))
 
     weekly = weekly_counts(commits, start, nweeks)
-    last_week = start + timedelta(days=7 * nweeks - 1)
-    clamped = sum(1 for c in commits if c.date > last_week)
+    # Against `today`, not against the Sunday that ends today's week: a commit
+    # dated tomorrow is as much in the future as one dated next month, and
+    # author-local dates routinely run a day ahead across timezones.
+    clamped = sum(1 for c in commits if c.date > today)
     days = set(c.date for c in commits)
     best, best_start, best_end, current, anchor = streaks(days, today)
     tags, evidence = mood(commits, weekly, nweeks, current, max(days), today)
@@ -777,7 +791,7 @@ def build(opts, today, g, ink):
             + render_tempo(weekly, start, clamped, ink, g) + [""]
             + render_clock(punch_card(commits), ink, g) + [""]
             + render_streaks(best, best_start, best_end, current, anchor,
-                             max(days), ink, g) + [""]
+                             max(days), clamped, ink, g) + [""]
             + render_mood(tags, evidence, ink, g))
 
 
