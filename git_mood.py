@@ -444,6 +444,23 @@ def undated_notes(undated):
     return ["%s: %s\n" % (PROG, note) for note in notes]
 
 
+def undated_reason(undated):
+    """Why there is nothing to chart, in the same terms as those notes.
+
+    One sentence used to cover both causes: "none with a real calendar date"
+    was printed even when every one of them had been skipped because git
+    itself could not read the timestamp - the stderr note two lines above
+    naming one cause while stdout named the other.
+    """
+    unread = sum(1 for stamp in undated if stamp.strip() == "%aI")
+    here = "%s here, " % count(len(undated), "commit")
+    if not unread:
+        return here + "none with a real calendar date"
+    if unread == len(undated):
+        return here + "none with a date git could read"
+    return here + "none with a date this could use"
+
+
 # --------------------------------------------------------------------------
 # stats: commits in, numbers out
 # --------------------------------------------------------------------------
@@ -949,9 +966,8 @@ def build(opts, today, g, ink):
         write(sys.stderr, note, True)
     if not commits:
         if undated:
-            return page("", "%s here, none with a real calendar date %s "
-                        "nothing to chart."
-                        % (count(len(undated), "commit"), g["dash"]))
+            return page("", "%s %s nothing to chart."
+                        % (undated_reason(undated), g["dash"]))
         return page("", nothing)
 
     start, nweeks = window_start(opts.weeks, opts.whole,
