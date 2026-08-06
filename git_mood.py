@@ -289,11 +289,16 @@ def stamp_parts(stamp):
 def parse_log(text):
     """One NUL-separated record in, one Commit out. No rejoining.
 
-    Returns (commits, undateable). A timestamp git cannot render as ISO 8601
-    comes back as the literal string "%aI" — reachable from fast-import and
-    CVS-converted histories carrying out-of-range author times. Such a record
-    cannot be placed on any panel, so it is counted and the caller says so;
-    dropping it without a word once turned a whole repo into "no commits yet".
+    Returns (commits, undated), where `undated` holds the raw author stamp of
+    every record that could not be placed on a calendar. There are two ways
+    in, and they are different facts about the repository, so the strings are
+    kept rather than tallied: git leaves its own placeholder "%aI" in place
+    when it cannot read the author timestamp at all (a negative one, from
+    before 1970, does this), and an author timestamp far in the future renders
+    fine as "3170843-11-07T09:46:39+00:00", a year no calendar covers. Either
+    way the record belongs to no week and no hour, so it is set aside and the
+    caller says so; dropping it in silence once turned a repo into "no commits
+    yet".
 
     Because the record boundary is a NUL (see read_commits) every record is
     exactly one commit, so field 0 is always git's own %aI and no author name
@@ -307,18 +312,39 @@ def parse_log(text):
     (`missingEmail` from fsck, "Missing < in ident string" from fast-import),
     so it can only ever be git's own separator and never part of a name.
     """
-    commits, undateable = [], 0
+    commits, undated = [], []
     for record in text.replace("\n", "\x00").split("\x00"):
         if not record:
             continue
         fields = record.split("\x1f")
         when = stamp_parts(fields[0]) if len(fields) >= 3 else None
         if when is None:
-            undateable += 1
+            undated.append(fields[0])
             continue
         name, email = "\x1f".join(fields[1:-1]), fields[-1]
         commits.append(Commit(when[0], when[1], when[0].weekday(), name, email))
-    return commits, undateable
+    return commits, undated
+
+
+def undated_notes(undated):
+    """One line per reason a commit could not be dated, naming the real one.
+
+    The old single line said the dates were ones "git could not render",
+    which is wrong twice over: git renders %aI for an author timestamp of
+    99999999999999 quite happily (it prints the year 3170843) and it is this
+    program that refuses it, and "render" reads as "draw" to anyone who has
+    not read the source. Each cause now says what actually happened.
+    """
+    unread = sum(1 for stamp in undated if stamp.strip() == "%aI")
+    unreal = len(undated) - unread
+    notes = []
+    if unreal:
+        notes.append("skipped %s whose author date is not a real calendar date"
+                     % count(unreal, "commit"))
+    if unread:
+        notes.append("skipped %s whose author date git itself could not read"
+                     % count(unread, "commit"))
+    return ["%s: %s\n" % (PROG, note) for note in notes]
 
 
 # --------------------------------------------------------------------------
@@ -750,18 +776,17 @@ def build(opts, today, g, ink):
     if not has_commits(top):
         return page("", nothing)
 
-    commits, undateable = read_commits(top)
-    if undateable:
+    commits, undated = read_commits(top)
+    for note in undated_notes(undated):
         # These belong to no week and no hour, so they cannot go on a panel.
         # The note goes to stderr: it survives `| head -1`, and it cannot
         # change what any number already on the chart means.
-        write(sys.stderr, "%s: skipped %s whose author date git could not "
-              "render\n" % (PROG, count(undateable, "commit")), True)
+        write(sys.stderr, note, True)
     if not commits:
-        if undateable:
-            return page("", "%s here, none with a date git could render %s "
+        if undated:
+            return page("", "%s here, none with a real calendar date %s "
                         "nothing to chart."
-                        % (count(undateable, "commit"), g["dash"]))
+                        % (count(len(undated), "commit"), g["dash"]))
         return page("", nothing)
 
     start, nweeks = window_start(opts.weeks, opts.whole,
