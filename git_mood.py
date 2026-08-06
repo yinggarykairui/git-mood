@@ -793,9 +793,17 @@ def render_tempo(weekly, start, clamped, ink, g):
     # bucket_columns leaves the short column, if there is one, at the oldest
     # end. Saying only "one column = 16 weeks" made that 9-week bar read as a
     # lull, so the odd column is named whenever it exists.
+    #
+    # It is named without the verb "holds", which everywhere else in this
+    # program counts commits - "every week holds 3", "the busiest week holds
+    # 8.3x the median week", and "peak 4" on the very next line - so "the
+    # oldest holds 1" read as one commit under a bar that was clearly taller
+    # than that. "the leftmost (oldest)" also states, in the only place the
+    # panel had room for it, which end of the chart is the old end.
+    # Worst case 77 columns, at ten weeks a column and a five-digit rate.
     width = count(size, "week")
     if columns and columns[0][1] != size:
-        width += " (the oldest holds %d)" % columns[0][1]
+        width += ", the leftmost (oldest) %d" % columns[0][1]
     lines = [
         ink.dim(gutter("tempo")) + bar,
         ink.dim(INDENT + "one column = %s%s%s commits/week"
