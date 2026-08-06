@@ -277,6 +277,17 @@ def has_commits(top):
                     "HEAD"]).returncode == 0
 
 
+def commits_elsewhere(top):
+    """Is anything committed on some other ref while HEAD points nowhere?
+
+    `git switch -c` before the first commit leaves HEAD unborn on the new
+    branch while main still holds the history, and calling that repository
+    "no commits yet" contradicts its own `git log main`.
+    """
+    done = run_git(["-C", top, "rev-list", "-n", "1", "--all"])
+    return done.returncode == 0 and bool(done.stdout.strip())
+
+
 def read_commits(top):
     """The one `git log` call. Bytes in, (Commit list, undateable count) out.
 
@@ -804,6 +815,9 @@ def build(opts, today, g, ink):
 
     nothing = "no commits yet %s nothing to chart." % g["dash"]
     if not has_commits(top):
+        if commits_elsewhere(top):
+            return page("", "no commits on the current branch %s nothing "
+                        "to chart." % g["dash"])
         return page("", nothing)
 
     commits, undated = read_commits(top)
