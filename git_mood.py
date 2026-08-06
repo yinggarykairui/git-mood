@@ -301,9 +301,14 @@ def parse_log(text):
     extra fields; they are joined back into the name by taking the first field
     as the stamp and the last as the email, so at worst an absurd name blurs
     into the email it is printed beside.
+
+    A newline is treated as a record boundary too. That is what git uses when
+    `-z` is not honored, and git refuses an author ident containing one
+    (`missingEmail` from fsck, "Missing < in ident string" from fast-import),
+    so it can only ever be git's own separator and never part of a name.
     """
     commits, undateable = [], 0
-    for record in text.split("\x00"):
+    for record in text.replace("\n", "\x00").split("\x00"):
         if not record:
             continue
         fields = record.split("\x1f")
