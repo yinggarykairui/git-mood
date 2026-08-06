@@ -669,9 +669,13 @@ def render_streaks(best, best_start, best_end, current, anchor, last_day,
     a header ending in August looked like three panels disagreeing. It is the
     same disclosure tempo makes, in the panel that needs it.
     """
-    longest = "longest %s, %s %s %s" % (count(best, "day"),
-                                        best_start.isoformat(), g["arrow"],
-                                        best_end.isoformat())
+    if best_start == best_end:
+        longest = "longest %s, %s" % (count(best, "day"),
+                                      best_start.isoformat())
+    else:
+        longest = "longest %s, %s %s %s" % (count(best, "day"),
+                                            best_start.isoformat(),
+                                            g["arrow"], best_end.isoformat())
     if current:
         now = "current %s, through %s" % (count(current, "day"),
                                           anchor.isoformat())
