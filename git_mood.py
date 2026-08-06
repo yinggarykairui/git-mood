@@ -506,9 +506,13 @@ def mood(commits, weekly, nweeks, current, last_day, today):
         (len(nonempty) >= 4 and ratio >= 3.0, "burst-driven",
          "the busiest week holds %sx the median week (line: 3x)"
          % floor1(ratio)),
+        # Two thresholds, one of them a `<` bound, and the only line in the
+        # program that ever passed 80 columns - at --weeks 520 the old
+        # wording reached 83 and dropped a lone ")" at column 0. "lines"
+        # plural, and "under 2x" says which way the second one points.
         (nweeks >= 4 and covered >= 60 and ratio < 2.0, "metronomic",
-         "%d of %d weeks have a commit, top week %sx the median "
-         "(line: 60%% and 2x)" % (len(nonempty), nweeks, floor1(ratio))),
+         "%d of %d weeks busy, peak %sx the median (lines: 60%%, under 2x)"
+         % (len(nonempty), nweeks, floor1(ratio))),
         (current >= 5, "on a tear",
          "%d days in a row with at least one commit (line: 5)" % current),
         (idle >= 21, "dormant",
