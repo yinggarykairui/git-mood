@@ -578,12 +578,25 @@ def mood(commits, weekly, nweeks, current, last_day, today):
          "the busiest week holds %sx the median week (line: 3x)"
          % floor1(ratio)),
         # Two thresholds, one of them a `<` bound, and the only line in the
-        # program that ever passed 80 columns - at --weeks 520 the old
+        # program that ever passed 80 columns - at --weeks 520 an older
         # wording reached 83 and dropped a lone ")" at column 0. "lines"
-        # plural, and "under 2x" says which way the second one points.
+        # stays plural and "<2x" keeps showing that the second bound points
+        # the other way from the first; spelling it "under 2x" cost four
+        # columns this line does not have.
+        #
+        # The coverage is a percentage because the line it quotes is one:
+        # "26 of 26 weeks busy ... (lines: 60%, ...)" measured in weeks and
+        # quoted in percent, leaving the reader to divide. "the median week"
+        # matches burst-driven two rows up, which measures the same ratio
+        # against the same denominator and names it.
+        #
+        # Worst case 76 columns. nweeks tops out in the thousands: --weeks
+        # caps at 520, and under --all an author date before 1970 comes out
+        # of git as the literal "%aI" and is set aside rather than charted,
+        # so the oldest week this line can count from is 1970's.
         (nweeks >= 4 and covered >= 60 and ratio < 2.0, "metronomic",
-         "%d of %d weeks busy, peak %sx the median (lines: 60%%, under 2x)"
-         % (len(nonempty), nweeks, floor1(ratio))),
+         "%d%% of %d weeks busy, peak %sx the median week (lines: 60%%, <2x)"
+         % (pct(covered), nweeks, floor1(ratio))),
         (current >= 5, "on a tear",
          "%d days in a row with at least one commit (line: 5)" % current),
         (idle >= 21, "dormant",
