@@ -548,8 +548,13 @@ def gutter(label):
 
 def render_head(name, summary, g):
     """Name, rule, counts line. The rule is 60 wide but never shorter than
-    the line it underlines, which `--all` can push past 60."""
-    lines = ["%s  %s" % (PROG, name), g["rule"] * max(60, len(summary))]
+    the line it underlines, which `--all` can push past 60.
+
+    The name is cut to fit that 60, since a repo directory is free to be 120
+    characters long and was hanging that far past its own rule.
+    """
+    title = "%s  %s" % (PROG, oneline(name, 60 - len(PROG) - 2))
+    lines = [title, g["rule"] * max(60, len(summary))]
     return lines + [summary] if summary else lines
 
 
@@ -706,7 +711,11 @@ def window_words(opts, nweeks):
 
 def build(opts, today, g, ink):
     top = resolve_repo(opts.path)
-    name = tame(os.path.basename(top.rstrip(os.sep)) or top)
+    name = os.path.basename(top.rstrip(os.sep)) or top
+    if name.endswith(".git") and len(name) > len(".git"):
+        # A bare repo lives in `name.git`; the repository is still `name`.
+        name = name[:-len(".git")]
+    name = tame(name)
 
     def page(summary, message):
         """Header, then exactly one line. Never a half-drawn chart."""
