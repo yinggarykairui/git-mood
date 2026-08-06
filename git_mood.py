@@ -314,10 +314,11 @@ def resolve_repo(path):
             return top, False
     done = run_git(["-C", path, "rev-parse", "--git-dir"])
     if done.returncode != 0:
-        # Relabelling every nonzero exit "not a git repository" told the
-        # owner of a repo they cannot read that their repo is not a repo.
-        # git's own sentence carries the reason and, for the everyday case
-        # of a directory owned by somebody else, names the fix.
+        # git's own sentence carries the reason - a directory somebody else
+        # owns, a $GIT_DIR pointing at nothing - so it is passed through
+        # instead of being relabelled. When git's own verdict already is
+        # "not a git repository" there is nothing to add, so this program
+        # says that in its own voice and names the path it was handed.
         reason = git_says(done)
         if reason and "not a git repository" not in reason.lower():
             raise EnvProblem("git says: %s" % reason)
@@ -507,15 +508,15 @@ def share(part, total):
     return part * 100.0 / total if total else 0.0
 
 
-def pct(value, line):
+def pct(value):
     """A whole percent for reading that never contradicts the chart.
 
     Rounding alone printed "100%" for 200 of 201 commits while the punch card
     three lines above showed the odd one lit, so the two ends are held back:
     100 is reserved for "all of them" and 0 for "none of them". Between those,
-    the nearest whole percent. `line` is the threshold the tag quoted; the tag
-    itself fires on the exact `value`, and for every integer line the rounded
-    number already lands on or above it, so nothing has to be pushed up.
+    the nearest whole percent. A tag fires on the exact measurement and never
+    on this number, and for every threshold in this program the rounded value
+    still lands on the firing side of the line, so nothing has to be nudged.
     """
     shown = int(round(value))
     if shown >= 100 and value < 100:
@@ -566,13 +567,13 @@ def mood(commits, weekly, nweeks, current, last_day, today):
     candidates = [
         (night >= 20, "nocturnal",
          "%d%% of commits land between 00:00 and 05:59 (line: 20%%)"
-         % pct(night, 20)),
+         % pct(night)),
         (weekend >= 25, "weekend-coded",
          "%d%% of commits land on a Saturday or Sunday (line: 25%%)"
-         % pct(weekend, 25)),
+         % pct(weekend)),
         (office >= 60, "nine-to-five",
          "%d%% of commits land Mon-Fri, 09:00-17:59 (line: 60%%)"
-         % pct(office, 60)),
+         % pct(office)),
         (len(nonempty) >= 4 and ratio >= 3.0, "burst-driven",
          "the busiest week holds %sx the median week (line: 3x)"
          % floor1(ratio)),
