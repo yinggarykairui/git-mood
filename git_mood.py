@@ -107,9 +107,18 @@ def tame(text):
 
 
 def oneline(text, limit=60):
-    """Errors are one line, so user data never breaks the format."""
+    """Errors are one line, so user data never breaks the format.
+
+    Below four characters there is no room for the ellipsis, and adding one
+    anyway returned a string longer than the limit asked for - oneline("abcdef",
+    2) came back as "abcde...". Under that floor the text is simply cut.
+    """
     flat = tame(" ".join(str(text).split()))
-    return flat if len(flat) <= limit else flat[:limit - 3] + "..."
+    if len(flat) <= limit:
+        return flat
+    if limit < 4:
+        return flat[:max(limit, 0)]
+    return flat[:limit - 3] + "..."
 
 
 def display_width(text):
@@ -125,11 +134,22 @@ def display_width(text):
 
 
 def fit(text, cells):
-    """oneline(), measured in cells, so the result really is that wide."""
+    """oneline(), measured in cells, so the result really is that wide.
+
+    The trim loop used to stop at three characters while the test it was
+    trying to satisfy counted cells, so any text of three wide characters or
+    fewer was never trimmed at all: fit("XXX", 4) handed back six cells. Now
+    the loop runs on the same measure as the test, and the ellipsis is dropped
+    rather than paid for when the budget cannot hold both.
+    """
     flat = oneline(text, cells)
-    while len(flat) > 3 and display_width(flat) > cells:
-        flat = flat[:len(flat) - 4] + "..."
-    return flat
+    if display_width(flat) <= cells:
+        return flat
+    tail = "..." if cells >= 4 else ""
+    room = cells - len(tail)
+    while flat and display_width(flat) > room:
+        flat = flat[:-1]
+    return flat + tail
 
 
 def flag_shaped(arg):
