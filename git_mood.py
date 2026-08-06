@@ -33,10 +33,10 @@ usage: git-mood [path] [options]
 
 options:
   -w, --weeks N     how many weeks back to read (default: 26, max: 520)
-  -a, --all         read the entire history; wins over --weeks
-      --author STR  only commits whose "Name <email>" contains STR
-                    (case-insensitive substring, not a pattern, and the
-                    name, the angle brackets and the email are one string)
+  -a, --all         read the current branch's entire history; wins over --weeks
+      --author STR  keep commits whose "Name <email>" contains STR
+                    (case-insensitive substring, not a regex; STR may
+                    span the brackets: --author "lace <ada")
       --ascii       draw with plain ASCII instead of block characters
       --no-color    never emit ANSI color (also honors NO_COLOR)
   -h, --help        show this and exit
