@@ -66,8 +66,13 @@ GLYPHS = {
     "dash": "—",
 }
 ASCII_GLYPHS = {
-    "spark": ".:-=+*#%",
-    "spark_zero": "_",
+    # The ramp climbs like the Unicode one: a dot for a week with nothing in
+    # it (the same low-ink mark the punch card uses for an empty cell), then
+    # a baseline stroke for the shortest bar. The old set had these two the
+    # other way round, so an --ascii sparkline drew dead weeks as solid bars
+    # and busy weeks as gaps - the picture upside down.
+    "spark": "_:-=+*#%",
+    "spark_zero": ".",
     "grid_zero": ".",
     "grid": "-=+#",
     "rule": "-",
