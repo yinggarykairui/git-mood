@@ -33,8 +33,9 @@ usage: git-mood [path] [options]
 options:
   -w, --weeks N     how many weeks back to read (default: 26, max: 520)
   -a, --all         read the entire history; wins over --weeks
-      --author STR  only commits whose author name or email contains STR
-                    (case-insensitive substring, not a pattern)
+      --author STR  only commits whose "Name <email>" contains STR
+                    (case-insensitive substring, not a pattern, and the
+                    name, the angle brackets and the email are one string)
       --ascii       draw with plain ASCII instead of block characters
       --no-color    never emit ANSI color (also honors NO_COLOR)
   -h, --help        show this and exit
@@ -797,6 +798,10 @@ def build(opts, today, g, ink):
         return page(render_summary([], opts, nweeks, start, today, g),
                     "no commits in %s.%s" % (where, advice))
     if opts.author is not None:
+        # The needle is tested against the whole `Name <email>` ident, the
+        # same string git log prints, so `--author "lace <ada"` can match
+        # across the boundary. --help says so rather than promising a
+        # name-or-email match this does not perform.
         needle = opts.author.lower()
         commits = [c for c in commits
                    if needle in ("%s <%s>" % (c.name, c.email)).lower()]

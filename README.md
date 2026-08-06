@@ -39,7 +39,7 @@ Options:
 ```sh
 python3 git_mood.py --weeks 8            # a shorter window (1-520, default 26)
 python3 git_mood.py --all                # the entire history
-python3 git_mood.py --author ada         # only commits whose author matches
+python3 git_mood.py --author ada         # substring of "Name <email>"
 python3 git_mood.py --ascii --no-color   # plain ASCII, no ANSI
 python3 git_mood.py --help
 ```
