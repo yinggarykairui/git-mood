@@ -254,12 +254,19 @@ def has_commits(top):
 def read_commits(top):
     """The one `git log` call. Bytes in, Commit list out.
 
+    `-z` makes git separate the records with NUL. git refuses to write a
+    commit object holding a NUL in the author ident (`fsck` calls it
+    nulInHeader, and fast-import stops at the first one), so a record boundary
+    is the one thing in this stream an author name cannot counterfeit. The
+    field separators inside a record still can, which is why the name is
+    reassembled from the middle fields rather than trusted to be one.
+
     No `--since` prefilter: it cuts on *committer* date, so a rebased or
     grafted commit whose author date is inside the window would vanish from a
     windowed run but show up under --all. The author-date filter in build() is
     the only authority on membership, so every panel counts the same commits.
     """
-    args = ["-C", top, "log", "--pretty=format:%aI%x1f%aN%x1f%aE%x1e"]
+    args = ["-C", top, "log", "-z", "--pretty=format:%aI%x1f%aN%x1f%aE"]
     done = run_git(args)
     if done.returncode != 0:
         raise EnvProblem("git log failed: %s"
@@ -280,42 +287,26 @@ def stamp_parts(stamp):
 
 
 def parse_log(text):
-    """Split the log into commits without losing any to odd author names.
+    """One NUL-separated record in, one Commit out. No rejoining.
 
-    An author name may itself contain \\x1f or \\x1e. A record is only complete
-    once it holds a parseable timestamp and at least two field separators; a
-    short fragment is rejoined with the next one (restoring the \\x1e the split
-    ate) instead of being dropped along with its neighbour. Extra \\x1f inside a
-    name is kept by taking the first field as the stamp and the last as the
-    email.
+    Because the record boundary is a NUL (see read_commits) every record is
+    exactly one commit, so field 0 is always git's own %aI and no author name
+    can invent a commit or erase one. A name holding \\x1f still splits into
+    extra fields; they are joined back into the name by taking the first field
+    as the stamp and the last as the email, so at worst an absurd name blurs
+    into the email it is printed beside.
     """
-    commits, held = [], None
-    for chunk in text.split("\x1e"):
-        fresh = chunk.lstrip("\r\n")
-        if held is None or complete(fresh):
-            # A held fragment that the next chunk cannot complete was real
-            # garbage: drop the fragment, never the record standing behind it.
-            record = fresh
-        else:
-            record = held + "\x1e" + chunk
-        held = None
+    commits = []
+    for record in text.split("\x00"):
         if not record:
             continue
-        if not complete(record):
-            held = record
-            continue
-        held = None
         fields = record.split("\x1f")
-        when = stamp_parts(fields[0])
+        when = stamp_parts(fields[0]) if len(fields) >= 3 else None
+        if when is None:
+            continue
         name, email = "\x1f".join(fields[1:-1]), fields[-1]
         commits.append(Commit(when[0], when[1], when[0].weekday(), name, email))
     return commits
-
-
-def complete(record):
-    """A record git can no longer be adding to: stamp plus both separators."""
-    return (record.count("\x1f") >= 2
-            and stamp_parts(record.split("\x1f")[0]) is not None)
 
 
 # --------------------------------------------------------------------------
