@@ -680,11 +680,23 @@ def render_tempo(weekly, start, clamped, ink, g):
     top = max(c[2] for c in columns)
     bar = "".join(spark_glyph(c[2], top, g) for c in columns)
 
-    # Caption the peak *column*, the bar a reader can actually point at.
-    first, span, peak = max(columns, key=lambda c: c[2])
-    when = (start + timedelta(days=7 * first)).isoformat()
-    where = "the week of %s" % when if span == 1 else \
-            "the %s from %s" % (count(span, "week"), when)
+    # Caption the peak *column*, the bar a reader can actually point at -
+    # but only when there is one to point at. On a flat repo every week held
+    # the same count and max() picked the oldest, so a chart with no shape at
+    # all read as "something happened in February".
+    peak = top
+    tied = [c for c in columns if c[2] == peak]
+    unit = "week" if size == 1 else "column"
+    if len(tied) == 1:
+        first, span = tied[0][0], tied[0][1]
+        when = (start + timedelta(days=7 * first)).isoformat()
+        where = "the week of %s" % when if span == 1 else \
+                "the %s from %s" % (count(span, "week"), when)
+        peak_line = "peak %d in %s" % (peak, where)
+    elif len(tied) == len(columns):
+        peak_line = "every %s holds %d" % (unit, peak)
+    else:
+        peak_line = "peak %d, tied across %s" % (peak, count(len(tied), unit))
     # bucket_columns leaves the short column, if there is one, at the oldest
     # end. Saying only "one column = 16 weeks" made that 9-week bar read as a
     # lull, so the odd column is named whenever it exists.
@@ -695,7 +707,7 @@ def render_tempo(weekly, start, clamped, ink, g):
         ink.dim(gutter("tempo")) + bar,
         ink.dim(INDENT + "one column = %s%s%s commits/week"
                 % (width, g["sep"], per_week(sum(weekly), nweeks))),
-        ink.dim(INDENT + "peak %d in %s" % (peak, where)),
+        ink.dim(INDENT + peak_line),
     ]
     if clamped:
         # Future-dated commits clamp into the newest bucket, which is rarely
