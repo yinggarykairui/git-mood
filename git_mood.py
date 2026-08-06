@@ -252,7 +252,7 @@ def has_commits(top):
 
 
 def read_commits(top):
-    """The one `git log` call. Bytes in, Commit list out.
+    """The one `git log` call. Bytes in, (Commit list, undateable count) out.
 
     `-z` makes git separate the records with NUL. git refuses to write a
     commit object holding a NUL in the author ident (`fsck` calls it
@@ -289,6 +289,12 @@ def stamp_parts(stamp):
 def parse_log(text):
     """One NUL-separated record in, one Commit out. No rejoining.
 
+    Returns (commits, undateable). A timestamp git cannot render as ISO 8601
+    comes back as the literal string "%aI" — reachable from fast-import and
+    CVS-converted histories carrying out-of-range author times. Such a record
+    cannot be placed on any panel, so it is counted and the caller says so;
+    dropping it without a word once turned a whole repo into "no commits yet".
+
     Because the record boundary is a NUL (see read_commits) every record is
     exactly one commit, so field 0 is always git's own %aI and no author name
     can invent a commit or erase one. A name holding \\x1f still splits into
@@ -296,17 +302,18 @@ def parse_log(text):
     as the stamp and the last as the email, so at worst an absurd name blurs
     into the email it is printed beside.
     """
-    commits = []
+    commits, undateable = [], 0
     for record in text.split("\x00"):
         if not record:
             continue
         fields = record.split("\x1f")
         when = stamp_parts(fields[0]) if len(fields) >= 3 else None
         if when is None:
+            undateable += 1
             continue
         name, email = "\x1f".join(fields[1:-1]), fields[-1]
         commits.append(Commit(when[0], when[1], when[0].weekday(), name, email))
-    return commits
+    return commits, undateable
 
 
 # --------------------------------------------------------------------------
@@ -685,8 +692,18 @@ def build(opts, today, g, ink):
     if not has_commits(top):
         return page("", nothing)
 
-    commits = read_commits(top)
+    commits, undateable = read_commits(top)
+    if undateable:
+        # These belong to no week and no hour, so they cannot go on a panel.
+        # The note goes to stderr: it survives `| head -1`, and it cannot
+        # change what any number already on the chart means.
+        write(sys.stderr, "%s: skipped %s whose author date git could not "
+              "render\n" % (PROG, count(undateable, "commit")), True)
     if not commits:
+        if undateable:
+            return page("", "%s here, none with a date git could render %s "
+                        "nothing to chart."
+                        % (count(undateable, "commit"), g["dash"]))
         return page("", nothing)
 
     start, nweeks = window_start(opts.weeks, opts.whole,
