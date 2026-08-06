@@ -582,17 +582,21 @@ def render_tempo(weekly, start, clamped, ink, g):
     when = (start + timedelta(days=7 * first)).isoformat()
     where = "the week of %s" % when if span == 1 else \
             "the %s from %s" % (count(span, "week"), when)
-    caption = "peak %d in %s" % (peak, where)
-    if clamped:
-        caption += "%sincludes %s dated later" % (g["sep"],
-                                                  count(clamped, "commit"))
-    return [
+    lines = [
         ink.dim(gutter("tempo")) + bar,
         ink.dim(INDENT + "one column = %s%s%s commits/week"
                 % (count(size, "week"), g["sep"],
                    per_week(sum(weekly), nweeks))),
-        ink.dim(INDENT + caption),
+        ink.dim(INDENT + "peak %d in %s" % (peak, where)),
     ]
+    if clamped:
+        # Future-dated commits clamp into the newest bucket, which is rarely
+        # the peak column. Hung off the peak caption, the note claimed they
+        # were in a column that does not hold them; it gets its own line and
+        # names the column that does.
+        lines.append(ink.dim(INDENT + "%s dated after today, counted in the "
+                             "newest column" % count(clamped, "commit")))
+    return lines
 
 
 def render_clock(grid, ink, g):
