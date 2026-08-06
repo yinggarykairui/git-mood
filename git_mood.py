@@ -386,17 +386,20 @@ def share(part, total):
 
 
 def pct(value, line):
-    """A whole percent for reading, never one that undercuts its own tag.
+    """A whole percent for reading that never contradicts the chart.
 
-    Truncating kept the printed number from falling below the threshold, but
-    it also printed "66%" for two commits out of three, which reads as bad
-    arithmetic. The tag still fires on the exact `value`; only the display
-    rounds. The clamp is what preserves the old invariant: a number shown
-    beside "(line: N%)" is never below N.
+    Rounding alone printed "100%" for 200 of 201 commits while the punch card
+    three lines above showed the odd one lit, so the two ends are held back:
+    100 is reserved for "all of them" and 0 for "none of them". Between those,
+    the nearest whole percent. `line` is the threshold the tag quoted; the tag
+    itself fires on the exact `value`, and for every integer line the rounded
+    number already lands on or above it, so nothing has to be pushed up.
     """
     shown = int(round(value))
-    if value >= line and shown < line:
-        shown = int(math.ceil(line))
+    if shown >= 100 and value < 100:
+        shown = 99
+    if shown <= 0 and value > 0:
+        shown = 1
     return shown
 
 
