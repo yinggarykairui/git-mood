@@ -380,6 +380,21 @@ def share(part, total):
     return part * 100.0 / total if total else 0.0
 
 
+def pct(value, line):
+    """A whole percent for reading, never one that undercuts its own tag.
+
+    Truncating kept the printed number from falling below the threshold, but
+    it also printed "66%" for two commits out of three, which reads as bad
+    arithmetic. The tag still fires on the exact `value`; only the display
+    rounds. The clamp is what preserves the old invariant: a number shown
+    beside "(line: N%)" is never below N.
+    """
+    shown = int(round(value))
+    if value >= line and shown < line:
+        shown = int(math.ceil(line))
+    return shown
+
+
 def floor1(value):
     """One decimal, rounded down: the printed number is never larger than the
     measured one, so `2.0x` can never appear under a `< 2x` rule."""
@@ -421,12 +436,13 @@ def mood(commits, weekly, nweeks, current, last_day, today):
     candidates = [
         (night >= 20, "nocturnal",
          "%d%% of commits land between 00:00 and 05:59 (line: 20%%)"
-         % int(night)),
+         % pct(night, 20)),
         (weekend >= 25, "weekend-coded",
          "%d%% of commits land on a Saturday or Sunday (line: 25%%)"
-         % int(weekend)),
+         % pct(weekend, 25)),
         (office >= 60, "nine-to-five",
-         "%d%% of commits land Mon-Fri, 09:00-17:59 (line: 60%%)" % int(office)),
+         "%d%% of commits land Mon-Fri, 09:00-17:59 (line: 60%%)"
+         % pct(office, 60)),
         (len(nonempty) >= 4 and ratio >= 3.0, "burst-driven",
          "the busiest week holds %sx the median week (line: 3x)"
          % floor1(ratio)),
