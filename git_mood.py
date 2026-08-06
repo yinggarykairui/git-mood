@@ -726,9 +726,12 @@ def render_summary(commits, opts, nweeks, start, today, g):
             # The empty string is a substring of every ident, so this filter
             # is applied and stops nothing. Announcing it without saying so
             # left the reader hunting for the commits it had removed.
+            # Under width pressure the clarifier used to be the thing that
+            # gave way, which left exactly the bare line it was added to
+            # prevent. It shortens instead of vanishing.
             who = 'filtered to "" (matches all)'
             if display_width(who) > room:
-                who = 'filtered to ""'
+                who = 'filtered to "" (all)'
         else:
             who = 'filtered to "%s"' % fit(opts.author,
                                            min(30, max(4, room - 14)))
