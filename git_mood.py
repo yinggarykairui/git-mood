@@ -45,8 +45,10 @@ options:
 Times are the author's own local clock, exactly as recorded in each commit.
 Nothing is converted to your timezone.
 
-The mood tags are nicknames for numbers, not psychology. Every tag prints
-the number and the threshold that produced it, so you can disagree with it.
+The mood tags are nicknames for numbers, not psychology. Every tag that
+fires on a threshold prints the measured number and the line it crossed,
+so you can disagree with it. "unremarkable" is the one tag with no
+arithmetic to show, because nothing crossed anything.
 """
 
 MAX_WEEKS = 520

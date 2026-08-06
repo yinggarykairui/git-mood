@@ -8,7 +8,7 @@ Reads a git repository's history and draws a mood chart in your terminal: tempo,
 
 ## What it does
 
-One `git log` call becomes four panels: a sparkline of commits per week, a 7×24 punch card for every hour of the week, the longest and current daily streaks, and up to three "mood" tags. Every tag prints the measured number and the threshold it crossed, so you can disagree with it — a tag that cannot show its arithmetic is not in the table. Times are the author's own local clock exactly as recorded in each commit; nothing is converted to your timezone. The default window is the last 26 weeks, and every number on screen describes that same set of commits.
+One `git log` call becomes four panels: a sparkline of commits per week — bucketed into wider columns once the window passes 52 weeks, with the caption saying how wide — a 7×24 punch card for every hour of the week, the longest and current daily streaks, and up to three "mood" tags. Every tag that fires on a threshold prints the measured number and the line it crossed, so you can disagree with it; `unremarkable` is the one row with no arithmetic to show, because nothing crossed anything. Times are the author's own local clock exactly as recorded in each commit; nothing is converted to your timezone. The default window is the last 26 weeks, and every number on screen describes that same set of commits.
 
 The whole table of tags, so you can check one against the output:
 
