@@ -665,7 +665,7 @@ def median(values):
     return (ordered[mid - 1] + ordered[mid]) / 2.0
 
 
-def mood(commits, weekly, nweeks, current, last_day, today):
+def mood(commits, weekly, nweeks, current, last_day, ahead, today):
     """Up to three tags, each with exactly one evidence line.
 
     Every threshold is tested against the exact measurement and only then
@@ -686,6 +686,20 @@ def mood(commits, weekly, nweeks, current, last_day, today):
     covered = share(len(nonempty), nweeks)
     idle = (today - last_day).days
 
+    # `last_day` is the newest commit that is not in the future, so when
+    # `ahead` commits are dated later this gap was measured from an older
+    # one than the streaks panel prints. Unsaid, the two panels contradicted
+    # each other four lines apart: "last commit 2036-01-05" above "nothing
+    # committed in 141 days". The shorter lead is there for the arithmetic
+    # that will not fit the long one - a repo idle for decades with a
+    # double-figure pile of future dates - and says the same thing.
+    quiet = "nothing committed in %d days" % idle
+    if ahead:
+        quiet += ", ignoring %s" % count(ahead, "future date")
+        if GUTTER + display_width(quiet) + len(" (line: 21 days)") > 80:
+            quiet = ("idle %d days, ignoring %s"
+                     % (idle, count(ahead, "future date")))
+
     # Tested in this order, and at most three print, so the order decides
     # what a repo that fires five is described as. The two tags about
     # *whether* the repo is being worked on go first: "on a tear" and
@@ -694,10 +708,13 @@ def mood(commits, weekly, nweeks, current, last_day, today):
     # printing "nocturnal - weekend-coded - burst-driven" and never getting
     # to the one fact a reader wants first. The rest keep the order they had.
     candidates = [
+        # Both lines carry the unit their threshold is measured in. Moved
+        # to the top of the order they sit above "(line: 20%)" and
+        # "(line: 25%)", where a bare "(line: 5)" reads as another percent.
         (current >= 5, "on a tear",
-         "%d days in a row with at least one commit (line: 5)" % current),
-        (idle >= 21, "dormant",
-         "nothing committed in %d days (line: 21)" % idle),
+         "%d days in a row with at least one commit (line: 5 days)"
+         % current),
+        (idle >= 21, "dormant", "%s (line: 21 days)" % quiet),
         (night >= 20, "nocturnal",
          "%d%% of commits land between 00:00 and 05:59 (line: 20%%)"
          % pct(night)),
@@ -1180,7 +1197,7 @@ def build(opts, today, g, ink):
     # commits' own maximum - it prints those dates and says they run ahead.
     tags, evidence = mood(commits, weekly, nweeks, current,
                           max([d for d in days if d <= today] or [max(days)]),
-                          today)
+                          clamped, today)
 
     return (render_head(name, render_summary(commits, opts, nweeks, start,
                                              today, g), g)
