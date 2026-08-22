@@ -92,7 +92,19 @@ Options = namedtuple("Options", "path weeks whole author ascii_ color")
 
 
 class Usage(Exception):
-    """Bad command line. Exit 2, with a pointer at --help."""
+    """Bad command line. Exit 2, with a pointer at --help.
+
+    Three parts on three lines, because only one of them is elastic: the
+    message says what is wrong and never holds user text, `echo` is the
+    token the user typed, and `advice` is the fix when one exists. Folding
+    the token into the message meant every message had its own budget for
+    it, and a 40-character argument pushed the one line to 155 cells.
+    """
+
+    def __init__(self, message, echo=None, advice=None):
+        Exception.__init__(self, message)
+        self.echo = echo
+        self.advice = advice
 
 
 class EnvProblem(Exception):
@@ -180,17 +192,25 @@ def take_value(flag, inline, argv, i, literal=""):
     anything. `--weeks --all` used to advise `--weeks=--all`, which fails on
     the next line with `got "--all"`; advice that does not work is worse than
     none, so only the flags that can take such a value offer it.
+
+    The advice quotes the value whole or is dropped. Cut to fit, it printed
+    a command line that is not the one it was advising - `--author=--xxx...`
+    searches for a literal ellipsis - so a value that will not fit, or that
+    needs quoting to survive a shell, gets no advice at all.
     """
     if inline is not None:
         return inline, i
     if i >= len(argv):
         raise Usage("%s needs a value" % flag)
     if flag_shaped(argv[i]):
-        seen = oneline(argv[i], 24)
-        note = "%s needs a value; %s is a flag" % (flag, seen)
-        if literal:
-            note += " (use %s=%s to %s)" % (flag, seen, literal)
-        raise Usage(note)
+        value = argv[i]
+        advice = "use %s=%s to %s" % (flag, value, literal)
+        if not (literal and tame(value) == value
+                and not any(ch.isspace() for ch in value)
+                and len(PROG) + 2 + display_width(advice) <= 80):
+            advice = None
+        raise Usage("%s needs a value; that is a flag" % flag,
+                    echo=value, advice=advice)
     return argv[i], i + 1
 
 
@@ -198,11 +218,10 @@ def parse_weeks(raw):
     try:
         n = int(raw)
     except ValueError:
-        raise Usage('--weeks needs an integer from 1 to %d, got "%s"'
-                    % (MAX_WEEKS, oneline(raw, 24)))
+        raise Usage("--weeks needs an integer from 1 to %d" % MAX_WEEKS,
+                    echo=raw)
     if not 1 <= n <= MAX_WEEKS:
-        raise Usage('--weeks must be from 1 to %d, got "%s"'
-                    % (MAX_WEEKS, oneline(raw, 24)))
+        raise Usage("--weeks must be from 1 to %d" % MAX_WEEKS, echo=raw)
     return n
 
 
@@ -226,7 +245,7 @@ def parse_args(argv):
         inline = inline if eq else None
         if only_paths:
             if path is not None:
-                raise Usage("unexpected argument: %s" % oneline(arg, 24))
+                raise Usage("unexpected argument", echo=arg)
             path = arg
         elif arg == "--":
             only_paths = True          # everything after is a path, even `-x`
@@ -251,11 +270,11 @@ def parse_args(argv):
             author, i = take_value(flag, inline, argv, i,
                                    "search for it as text")
         elif arg.startswith("-") and arg != "-":
-            raise Usage("unknown option: %s" % oneline(arg, 24))
+            raise Usage("unknown option", echo=arg)
         elif path is None:
             path = arg
         else:
-            raise Usage("unexpected argument: %s" % oneline(arg, 24))
+            raise Usage("unexpected argument", echo=arg)
     if want is not None:
         if seen != len(argv):
             raise Usage("%s takes no other arguments" % want_flag)
@@ -1067,6 +1086,11 @@ def main(argv):
         emit("\n".join(lines) + "\n", opts.ascii_)
     except Usage as exc:
         write(sys.stderr, "%s: %s; try: %s --help\n" % (PROG, exc, PROG), True)
+        if exc.echo is not None:
+            write(sys.stderr, "%s: you typed: %s\n"
+                  % (PROG, fit(exc.echo, 55)), True)
+        if exc.advice:
+            write(sys.stderr, "%s: %s\n" % (PROG, exc.advice), True)
         return EXIT_USAGE
     except EnvProblem as exc:
         write(sys.stderr, "%s: %s\n" % (PROG, exc), True)
