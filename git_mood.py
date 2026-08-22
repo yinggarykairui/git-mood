@@ -151,9 +151,13 @@ def oneline(text, limit=60):
     # str.split() with no argument folds on Unicode whitespace, which counts
     # the C0 separators \x1c-\x1f as spaces and drops them before tame() ever
     # sees them: an author string of one \x1f came out empty rather than as
-    # the "?" every other control character gets. Only the five ASCII spaces
-    # and the tab collapse here; the rest reach tame() and are marked.
-    spaced = "".join(" " if ch in " \t\n\r\v\f" else ch for ch in str(text))
+    # the "?" every other control character gets. So the fold is Python's own
+    # whitespace set minus those four. Narrowing it to six ASCII characters
+    # instead fixed the separators and let everything else str.split() used
+    # to catch - U+0085, U+00A0, U+2028, U+2029 - reach stdout raw.
+    seps = "\x1c\x1d\x1e\x1f"
+    spaced = "".join(" " if ch.isspace() and ch not in seps else ch
+                     for ch in str(text))
     flat = tame(" ".join(part for part in spaced.split(" ") if part))
     if len(flat) <= limit:
         return flat
