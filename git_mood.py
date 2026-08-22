@@ -998,12 +998,19 @@ def render_mood(tags, evidence, ink, g):
 # wiring
 # --------------------------------------------------------------------------
 
-def write(stream, text, ascii_):
+def write(stream, text, ascii_=False):
     """A repo or author name can hold characters the stream cannot encode.
 
     Replace them instead of raising; under --ascii force plain ASCII so the
     whole output stays below U+0080 whatever the repo is called. A stream that
     is closed (`git-mood >&-` leaves sys.stdout as None) is not a crash.
+
+    `ascii_` is the --ascii drawing mode and nothing else. Passing it on every
+    stderr write made the two streams disagree about the same string: stdout
+    printed an author of 漢字テスト as typed while the "you typed:" echo, whose
+    whole job is to show the user their own text, printed a row of "?". Both
+    streams now sanitise the same way (tame(), on the way in) and encode with
+    the encoding the stream itself reports.
     """
     if stream is None:
         return False
@@ -1014,6 +1021,13 @@ def write(stream, text, ascii_):
         text = text.encode("ascii", "replace").decode("ascii")
     try:
         stream.write(text)
+    except UnicodeError:
+        # The stream reported an encoding it will not actually write. An
+        # error message is not worth a traceback, so it goes out in ASCII.
+        try:
+            stream.write(text.encode("ascii", "replace").decode("ascii"))
+        except (ValueError, OSError, UnicodeError):
+            return False
     except (ValueError, OSError):
         return False
     return True
@@ -1065,7 +1079,7 @@ def build(opts, today, g, ink):
         # These belong to no week and no hour, so they cannot go on a panel.
         # The note goes to stderr: it survives `| head -1`, and it cannot
         # change what any number already on the chart means.
-        write(sys.stderr, note, True)
+        write(sys.stderr, note)
     if not commits:
         if undated:
             return page("", "%s %s nothing to chart."
@@ -1139,15 +1153,15 @@ def main(argv):
                       Ink(color_enabled(opts)))
         emit("\n".join(lines) + "\n", opts.ascii_)
     except Usage as exc:
-        write(sys.stderr, "%s: %s; try: %s --help\n" % (PROG, exc, PROG), True)
+        write(sys.stderr, "%s: %s; try: %s --help\n" % (PROG, exc, PROG))
         if exc.echo is not None:
             write(sys.stderr, "%s: you typed: %s\n"
-                  % (PROG, fit(exc.echo, 55)), True)
+                  % (PROG, fit(exc.echo, 55)))
         if exc.advice:
-            write(sys.stderr, "%s: %s\n" % (PROG, exc.advice), True)
+            write(sys.stderr, "%s: %s\n" % (PROG, exc.advice))
         return EXIT_USAGE
     except EnvProblem as exc:
-        write(sys.stderr, "%s: %s\n" % (PROG, exc), True)
+        write(sys.stderr, "%s: %s\n" % (PROG, exc))
         return EXIT_ENV
     except KeyboardInterrupt:
         return EXIT_INTERRUPT
