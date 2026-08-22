@@ -1047,13 +1047,16 @@ def render_tempo(weekly, start, clamped, today, ink, g):
         # the peak column. Hung off the peak caption, the note claimed they
         # were in a column that does not hold them; it gets its own line and
         # names the column that does.
-        # Worded from the column rather than from the commits, because the
-        # streaks panel six rows down opens its own future-date disclosure
-        # with "N commit(s) dated after today" and the page was saying the
-        # same five words twice. Both still disclose; only this one leads
-        # with the column it is about.
-        lines.append(ink.dim(INDENT + "the newest column also holds %s dated "
-                             "after today" % count(clamped, "commit")))
+        # "with a future date" and not "dated after today", because the
+        # streaks panel six rows down discloses the same commits and the
+        # page was opening two lines with the same five words. Both still
+        # disclose. It is not led with "the newest column" either: the
+        # caption two rows up now begins "the newest week/column is", and
+        # trading one repetition for another three rows closer is not a fix.
+        # "future date" is the phrase the dormant evidence line already uses
+        # for the same commits.
+        lines.append(ink.dim(INDENT + "%s with a future date, counted in the "
+                             "newest column" % count(clamped, "commit")))
     return lines
 
 
