@@ -116,7 +116,13 @@ def oneline(text, limit=60):
     anyway returned a string longer than the limit asked for - oneline("abcdef",
     2) came back as "abcde...". Under that floor the text is simply cut.
     """
-    flat = tame(" ".join(str(text).split()))
+    # str.split() with no argument folds on Unicode whitespace, which counts
+    # the C0 separators \x1c-\x1f as spaces and drops them before tame() ever
+    # sees them: an author string of one \x1f came out empty rather than as
+    # the "?" every other control character gets. Only the five ASCII spaces
+    # and the tab collapse here; the rest reach tame() and are marked.
+    spaced = "".join(" " if ch in " \t\n\r\v\f" else ch for ch in str(text))
+    flat = tame(" ".join(part for part in spaced.split(" ") if part))
     if len(flat) <= limit:
         return flat
     if limit < 4:
