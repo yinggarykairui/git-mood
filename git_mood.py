@@ -1006,7 +1006,14 @@ def build(opts, today, g, ink):
     clamped = sum(1 for c in commits if c.date > today)
     days = set(c.date for c in commits)
     best, best_start, best_end, current, anchor = streaks(days, today)
-    tags, evidence = mood(commits, weekly, nweeks, current, max(days), today)
+    # The dormant tag measures the gap since the last commit, so it reads the
+    # newest date that is not in the future: a single commit dated next month
+    # otherwise sets `idle` negative and silences the tag on a repo that has
+    # in fact been quiet for a year. The streaks panel below still gets the
+    # commits' own maximum - it prints those dates and says they run ahead.
+    tags, evidence = mood(commits, weekly, nweeks, current,
+                          max([d for d in days if d <= today] or [max(days)]),
+                          today)
 
     return (render_head(name, render_summary(commits, opts, nweeks, start,
                                              today, g), g)
