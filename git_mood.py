@@ -48,7 +48,11 @@ Nothing is converted to your timezone.
 "N authors" counts distinct author email addresses, lower-cased. --author
 matches the composed "Name <email>" instead, so the two can disagree.
 
-The layout is a fixed 60-80 columns; COLUMNS is not read.
+COLUMNS is not read and the layout does not adapt. Nothing printed passes
+80 columns; a chart is never under 61, and a page that says there is
+nothing to chart never under 60. Which line is widest depends on the
+repository: usually the rule under the title, a tempo caption or a mood
+line. Never the sparkline - it stops at 60 columns and wraps last.
 
 The mood tags are nicknames for numbers, not psychology. Every tag that
 fires on a threshold prints the measured number and the line it crossed,
