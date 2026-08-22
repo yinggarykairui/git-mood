@@ -45,10 +45,17 @@ options:
 Times are the author's own local clock, exactly as recorded in each commit.
 Nothing is converted to your timezone.
 
+"N authors" counts distinct author email addresses, lower-cased. --author
+matches the composed "Name <email>" instead, so the two can disagree.
+
+The layout is a fixed 60-80 columns; COLUMNS is not read.
+
 The mood tags are nicknames for numbers, not psychology. Every tag that
 fires on a threshold prints the measured number and the line it crossed,
 so you can disagree with it. "unremarkable" is the one tag with no
-arithmetic to show, because nothing crossed anything.
+arithmetic to show, because nothing crossed anything. Tags are tested in
+a fixed order — on a tear, dormant, nocturnal, weekend-coded,
+nine-to-five, burst-driven, metronomic — and at most three print.
 """
 
 MAX_WEEKS = 520
