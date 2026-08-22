@@ -218,6 +218,12 @@ def fit(text, cells):
     return ""
 
 
+# Everything a POSIX shell reads as more than text. Advice that pastes a
+# value holding one of these is a command line the reader cannot paste back:
+# `--author=--a$(id)` looks like a search and runs `id`.
+SHELL_META = frozenset("$`\"'\\;&|<>(){}[]*?~!#")
+
+
 def flag_shaped(arg):
     """`--all` and `-a` are flags; `-3` and `-` are values."""
     return len(arg) > 1 and arg[0] == "-" and (arg[1] == "-" or arg[1].isalpha())
@@ -235,10 +241,15 @@ def take_value(flag, inline, argv, i, literal=""):
     the next line with `got "--all"`; advice that does not work is worse than
     none, so only the flags that can take such a value offer it.
 
-    The advice quotes the value whole or is dropped. Cut to fit, it printed
-    a command line that is not the one it was advising - `--author=--xxx...`
-    searches for a literal ellipsis - so a value that will not fit, or that
-    needs quoting to survive a shell, gets no advice at all.
+    The advice quotes the value whole or falls back to the generic form. Cut
+    to fit, it printed a command line that is not the one it was advising -
+    `--author=--xxx...` searches for a literal ellipsis - so a value that
+    will not fit, or that needs quoting to survive a shell, is named as
+    VALUE rather than pasted in.
+
+    "Needs quoting" is SHELL_META, not whitespace. Testing only for spaces
+    let `--author=--a$(id)` out as a copy-pasteable line, and pasting it
+    runs `id` - the exact hazard the quote-it-whole rule was written for.
     """
     if inline is not None:
         return inline, i
@@ -247,12 +258,13 @@ def take_value(flag, inline, argv, i, literal=""):
     if flag_shaped(argv[i]):
         value = argv[i]
         advice = "use %s=%s to %s" % (flag, value, literal)
-        if not (literal and tame(value) == value
-                and not any(ch.isspace() for ch in value)
+        quotable = any(ch.isspace() or ch in SHELL_META for ch in value)
+        if not (tame(value) == value and not quotable
                 and len(PROG) + 2 + display_width(advice) <= 80):
-            advice = None
+            # Still say which form works; only the value is withheld.
+            advice = "use the %s=VALUE form to %s" % (flag, literal)
         raise Usage("%s needs a value; that is a flag" % flag,
-                    echo=value, advice=advice)
+                    echo=value, advice=advice if literal else None)
     return argv[i], i + 1
 
 
