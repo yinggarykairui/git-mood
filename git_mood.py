@@ -839,7 +839,7 @@ def per_week(total, nweeks):
     return "%.1f" % average
 
 
-def render_tempo(weekly, start, clamped, ink, g):
+def render_tempo(weekly, start, clamped, today, ink, g):
     nweeks = len(weekly)
     size = int(math.ceil(nweeks / float(SPARK_COLS)))
     columns = bucket_columns(weekly, size)
@@ -883,6 +883,15 @@ def render_tempo(weekly, start, clamped, ink, g):
                 % (width, g["sep"], per_week(sum(weekly), nweeks))),
         ink.dim(INDENT + peak_line),
     ]
+    # The window is Monday-aligned and ends today, so on any day but a Sunday
+    # the newest week is a part-week - and the newest bar is drawn from it at
+    # full height beside seven-day bars. A one-commit Monday next to a
+    # five-commit week reads as a collapse rather than as a week that is one
+    # day old, so the caption says how far into the week the bar has got.
+    if today.weekday() != 6:
+        lines.append(ink.dim(INDENT + "the newest %s stops at today, %s into "
+                             "the week" % (unit,
+                                           count(today.weekday() + 1, "day"))))
     if clamped:
         # Future-dated commits clamp into the newest bucket, which is rarely
         # the peak column. Hung off the peak caption, the note claimed they
@@ -1079,7 +1088,7 @@ def build(opts, today, g, ink):
     return (render_head(name, render_summary(commits, opts, nweeks, start,
                                              today, g), g)
             + [""]
-            + render_tempo(weekly, start, clamped, ink, g) + [""]
+            + render_tempo(weekly, start, clamped, today, ink, g) + [""]
             + render_clock(punch_card(commits), ink, g) + [""]
             + render_streaks(best, best_start, best_end, current, anchor,
                              max(days), clamped, today, ink, g) + [""]
