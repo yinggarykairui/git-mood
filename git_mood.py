@@ -942,15 +942,35 @@ def render_tempo(weekly, start, clamped, today, ink, g):
                 % (width, g["sep"], per_week(sum(weekly), nweeks))),
         ink.dim(INDENT + peak_line),
     ]
-    # The window is Monday-aligned and ends today, so on any day but a Sunday
-    # the newest week is a part-week - and the newest bar is drawn from it at
-    # full height beside seven-day bars. A one-commit Monday next to a
-    # five-commit week reads as a collapse rather than as a week that is one
-    # day old, so the caption says how far into the week the bar has got.
-    if today.weekday() != 6:
-        lines.append(ink.dim(INDENT + "the newest %s stops at today, %s into "
-                             "the week" % (unit,
-                                           count(today.weekday() + 1, "day"))))
+    # The window is Monday-aligned and ends today, so the newest bar is drawn
+    # from a span that has not finished, at full height beside bars that
+    # have. A one-commit Monday next to a five-commit week reads as a
+    # collapse rather than as a week that is one day old, so the caption
+    # says how much of the newest bar's span has actually elapsed.
+    #
+    # Measured on the column, not on the week. Firing on today.weekday()
+    # alone and then saying "6 days into the week" described a week nobody
+    # drew: at `one column = 10 weeks` the newest column is 69 days of 70,
+    # and calling that a fragment is a plain falsehood.
+    #
+    # The consequence rides on the same line, because the reconciliation -
+    # that the rate above divides by whole weeks including this part-week -
+    # was only ever written down in the README, which is not on screen. It
+    # is dropped, and only it, when the two day counts run to three digits
+    # and the line would pass 80; the arithmetic is still printed, and a
+    # column that is 391 days of 392 is not a fragment worth a caveat.
+    newest = columns[-1]
+    first_day = start + timedelta(days=7 * newest[0])
+    span_days, elapsed = 7 * newest[1], (today - first_day).days + 1
+    if 0 < elapsed < span_days:
+        if size == 1:
+            aged = "the newest week is %s old" % count(elapsed, "day")
+        else:
+            aged = ("the newest column is %d of %d days old"
+                    % (elapsed, span_days))
+        whole = aged + "; the rate divides by whole weeks"
+        lines.append(ink.dim(INDENT + (whole if GUTTER + display_width(whole)
+                                       <= 80 else aged)))
     if clamped:
         # Future-dated commits clamp into the newest bucket, which is rarely
         # the peak column. Hung off the peak caption, the note claimed they
