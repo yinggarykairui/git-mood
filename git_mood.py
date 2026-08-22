@@ -135,10 +135,24 @@ class EnvProblem(Exception):
 # argument parsing
 # --------------------------------------------------------------------------
 
+# Codepoints that draw nothing but change how the characters around them
+# are laid out: the zero-width and directional-formatting block, and the
+# byte-order mark. They are not control characters by category, so the
+# `ch < " "` test below never saw them, and a repo name or an --author value
+# holding U+202E flipped the visual order of the rest of the header line -
+# the same hijack an embedded ESC performs, with no escape byte in sight.
+INVISIBLE = frozenset(
+    [chr(c) for c in range(0x200B, 0x2010)]      # ZWSP..RLM
+    + [chr(c) for c in range(0x202A, 0x202F)]    # LRE..RLO
+    + [chr(c) for c in range(0x2066, 0x206A)]    # LRI..PDI
+    + ["\ufeff"])                                # BOM / ZWNBSP
+
+
 def tame(text):
     """Control characters out. A repo directory named with an embedded ESC
     would otherwise recolor the caller's terminal from our own header."""
-    return "".join("?" if ch < " " or ch == "\x7f" else ch for ch in str(text))
+    return "".join("?" if ch < " " or "\x7f" <= ch <= "\x9f"
+                   or ch in INVISIBLE else ch for ch in str(text))
 
 
 def oneline(text, limit=60):
