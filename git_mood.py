@@ -24,7 +24,7 @@ EXIT_ENV = 1
 EXIT_USAGE = 2
 EXIT_INTERRUPT = 130
 
-HELP = """git-mood — a terminal mood chart for a git repository
+HELP = """git-mood - a terminal mood chart for a git repository
 
 usage: git-mood [path] [options]
 
@@ -54,9 +54,14 @@ The mood tags are nicknames for numbers, not psychology. Every tag that
 fires on a threshold prints the measured number and the line it crossed,
 so you can disagree with it. "unremarkable" is the one tag with no
 arithmetic to show, because nothing crossed anything. Tags are tested in
-a fixed order — on a tear, dormant, nocturnal, weekend-coded,
-nine-to-five, burst-driven, metronomic — and at most three print.
+a fixed order (on a tear, dormant, nocturnal, weekend-coded,
+nine-to-five, burst-driven, metronomic) and at most three print.
 """
+
+# HELP is the one string that never goes through the --ascii ramp, so it
+# has to be ASCII on its own: an em dash in it printed as "?" on a stream
+# that could not encode one, mid-sentence, in the text explaining the tags.
+assert HELP.encode("ascii")
 
 MAX_WEEKS = 520
 GUTTER = 8           # width of the "tempo   " / "clock   " label column
