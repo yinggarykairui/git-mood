@@ -154,11 +154,14 @@ def fit(text, cells):
     flat = oneline(text, cells)
     if display_width(flat) <= cells:
         return flat
-    tail = "..." if cells >= 4 else ""
-    room = cells - len(tail)
-    while flat and display_width(flat) > room:
-        flat = flat[:-1]
-    return flat + tail
+    for tail in ("..." if cells >= 4 else "", ""):
+        room = cells - len(tail)
+        cut = flat
+        while cut and display_width(cut) > room:
+            cut = cut[:-1]
+        if cut:
+            return cut + tail
+    return ""
 
 
 def flag_shaped(arg):
