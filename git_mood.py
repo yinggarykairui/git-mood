@@ -437,7 +437,8 @@ def check_directory(path):
     except PermissionError:
         raise EnvProblem(env_line("permission denied: ", path))
     except OSError as exc:
-        raise EnvProblem(env_line("cannot read ", path, exc.strerror or ""))
+        raise EnvProblem(env_line("cannot read ", path,
+                                  exc.strerror or str(exc)))
     if not os.path.isdir(path):
         raise EnvProblem(env_line("not a directory: ", path))
     if not os.access(path, os.R_OK | os.X_OK):
