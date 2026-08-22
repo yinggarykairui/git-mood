@@ -39,7 +39,7 @@ options:
                     span the brackets: --author "lace <ada")
       --ascii       draw with plain ASCII instead of block characters
       --no-color    never emit ANSI color (also honors NO_COLOR)
-  -h, --help        show this and exit
+  -h, --help        show this and exit; wins over -V if both are given
   -V, --version     show the version and exit
 
 Times are the author's own local clock, exactly as recorded in each commit.
@@ -119,12 +119,16 @@ class Usage(Exception):
     token the user typed, and `advice` is the fix when one exists. Folding
     the token into the message meant every message had its own budget for
     it, and a 40-character argument pushed the one line to 155 cells.
+
+    `tip` is the "try: git-mood --help" tail. One message turns it off: the
+    one that refuses to print the help the user just asked for.
     """
 
-    def __init__(self, message, echo=None, advice=None):
+    def __init__(self, message, echo=None, advice=None, tip=True):
         Exception.__init__(self, message)
         self.echo = echo
         self.advice = advice
+        self.tip = tip
 
 
 class EnvProblem(Exception):
@@ -272,10 +276,16 @@ def parse_args(argv):
     --help and --version are recorded and acted on after the scan, not in the
     middle of it. Printing on sight made `git-mood --help nonsense` exit 0
     with the help text, which reads as "that command line was fine".
+
+    Only a path argument makes that a usage error, though. Refusing every
+    other token counted `--no-color --help` and `--ascii --help` as mistakes,
+    which is nobody's mistake: those flags say how to print, and the help is
+    printed. An unknown option still raises inside the scan, so `--help
+    --nope` is exit 2 the way it always was.
     """
     path, weeks, whole, author, ascii_, color = None, 26, False, None, False, True
     i, only_paths = 0, False
-    want, want_flag, seen = None, None, 0
+    want, want_flag = None, None
     while i < len(argv):
         arg = argv[i]
         i += 1
@@ -288,13 +298,13 @@ def parse_args(argv):
         elif arg == "--":
             only_paths = True          # everything after is a path, even `-x`
         elif arg in ("-h", "--help"):
-            want, want_flag, seen = HELP, arg, seen + 1
-        elif arg in ("-V", "--version"):
             # --help wins when both are given: it is the larger answer, and
-            # it names --version anyway.
+            # it names --version anyway. It wins whichever order they come
+            # in, so this assignment is not guarded.
+            want, want_flag = HELP, arg
+        elif arg in ("-V", "--version"):
             if want is None:
                 want, want_flag = "%s %s\n" % (PROG, VERSION), arg
-            seen += 1
         elif arg in ("-a", "--all"):
             whole = True
         elif arg == "--ascii":
@@ -314,8 +324,13 @@ def parse_args(argv):
         else:
             raise Usage("unexpected argument", echo=arg)
     if want is not None:
-        if seen != len(argv):
-            raise Usage("%s takes no other arguments" % want_flag)
+        if path is not None:
+            # No "try: --help" tail here: it would advise the user to ask for
+            # the help this very line is refusing to print. The path they
+            # typed goes on the echo line instead, like every other usage
+            # error.
+            raise Usage("%s takes no path argument" % want_flag,
+                        echo=path, tip=False)
         emit(want)
         raise SystemExit(0)
     return Options(path or ".", weeks, whole, author, ascii_, color)
@@ -1153,7 +1168,8 @@ def main(argv):
                       Ink(color_enabled(opts)))
         emit("\n".join(lines) + "\n", opts.ascii_)
     except Usage as exc:
-        write(sys.stderr, "%s: %s; try: %s --help\n" % (PROG, exc, PROG))
+        tail = "; try: %s --help" % PROG if exc.tip else ""
+        write(sys.stderr, "%s: %s%s\n" % (PROG, exc, tail))
         if exc.echo is not None:
             write(sys.stderr, "%s: you typed: %s\n"
                   % (PROG, fit(exc.echo, 55)))
