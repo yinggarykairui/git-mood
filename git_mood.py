@@ -634,7 +634,18 @@ def mood(commits, weekly, nweeks, current, last_day, today):
     covered = share(len(nonempty), nweeks)
     idle = (today - last_day).days
 
+    # Tested in this order, and at most three print, so the order decides
+    # what a repo that fires five is described as. The two tags about
+    # *whether* the repo is being worked on go first: "on a tear" and
+    # "dormant" answer that before any tag about which hours the work keeps,
+    # and a dormant repo whose old commits happened to be nocturnal was
+    # printing "nocturnal - weekend-coded - burst-driven" and never getting
+    # to the one fact a reader wants first. The rest keep the order they had.
     candidates = [
+        (current >= 5, "on a tear",
+         "%d days in a row with at least one commit (line: 5)" % current),
+        (idle >= 21, "dormant",
+         "nothing committed in %d days (line: 21)" % idle),
         (night >= 20, "nocturnal",
          "%d%% of commits land between 00:00 and 05:59 (line: 20%%)"
          % pct(night)),
@@ -670,10 +681,6 @@ def mood(commits, weekly, nweeks, current, last_day, today):
         (nweeks >= 4 and covered >= 60 and ratio < 2.0, "metronomic",
          "%d%% of %s weeks busy, peak %sx the median week (lines: 60%%, <2x)"
          % (pct(covered), "{:,}".format(nweeks), floor1(ratio))),
-        (current >= 5, "on a tear",
-         "%d days in a row with at least one commit (line: 5)" % current),
-        (idle >= 21, "dormant",
-         "nothing committed in %d days (line: 21)" % idle),
     ]
     for fired, tag, line in candidates:
         if fired:
