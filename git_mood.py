@@ -73,10 +73,23 @@ ASCII_GLYPHS = {
     # it (the same low-ink mark the punch card uses for an empty cell), then
     # a baseline stroke for the shortest bar. The old set had these two the
     # other way round, so an --ascii sparkline drew dead weeks as solid bars
-    # and busy weeks as gaps - the picture upside down. The top of the ramp
-    # was inverted too: "%" carries less ink than "#" in every monospace
-    # face, so the tallest bar - the one the caption points at - printed
-    # lighter than the bar beside it. "#" is the top step.
+    # and busy weeks as gaps - the picture upside down.
+    #
+    # Above the first step the order is convention - the ramp people already
+    # read in ASCII art - and not measured ink. This comment used to claim
+    # that "%" carries less ink than "#" "in every monospace face", which is
+    # a promise about every font in the world that nothing here checked. A
+    # survey of rendered coverage across eleven monospace faces says the
+    # opposite of monotone: ":" comes out heavier than "-" and "=" heavier
+    # than "+" in all eleven, "+" heavier than "*" in seven, and the last
+    # step, "%" to "#", runs backwards in Liberation Mono. Ten of eleven
+    # faces do put "#" on top, which is why it is the top step, but that is
+    # a majority and not a law.
+    #
+    # No number on screen depends on any of it. ramp_glyph() picks the step
+    # from the value and the panel maximum, and this string is exactly as
+    # long as the Unicode one, so --ascii and the default choose the same
+    # index for the same week; only the shape drawn there differs.
     "spark": "_:-=+*%#",
     "spark_zero": ".",
     "grid_zero": ".",
