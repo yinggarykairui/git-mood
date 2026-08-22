@@ -43,16 +43,14 @@ options:
   -V, --version     show the version and exit
 
 Times are the author's own local clock, exactly as recorded in each commit.
-Nothing is converted to your timezone.
+Nothing is converted to your timezone. When color is on, the punch card
+tints the 00:00-05:59 hours; its caption says so.
 
 "N authors" counts distinct author email addresses, lower-cased. --author
 matches the composed "Name <email>" instead, so the two can disagree.
 
-COLUMNS is not read and the layout does not adapt. Nothing printed passes
-80 columns; a chart is never under 61, and a page that says there is
-nothing to chart never under 60. Which line is widest depends on the
-repository: usually the rule under the title, a tempo caption or a mood
-line. Never the sparkline - it stops at 60 columns and wraps last.
+COLUMNS is not read and the layout does not adapt. Nothing printed is
+wider than 80 columns, on stdout or on stderr.
 
 The mood tags are nicknames for numbers, not psychology. Every tag that
 fires on a threshold prints the measured number and the line it crossed,
@@ -149,23 +147,27 @@ class EnvProblem(Exception):
 # --------------------------------------------------------------------------
 
 # Codepoints that draw nothing but change how the characters around them
-# are laid out: the zero-width and directional-formatting block, and the
-# byte-order mark. They are not control characters by category, so the
+# are laid out. They are not control characters by category, so the
 # `ch < " "` test below never saw them, and a repo name or an --author value
 # holding U+202E flipped the visual order of the rest of the header line -
 # the same hijack an embedded ESC performs, with no escape byte in sight.
-INVISIBLE = frozenset(
-    [chr(c) for c in range(0x200B, 0x2010)]      # ZWSP..RLM
-    + [chr(c) for c in range(0x202A, 0x202F)]    # LRE..RLO
-    + [chr(c) for c in range(0x2066, 0x206A)]    # LRI..PDI
-    + ["\ufeff"])                                # BOM / ZWNBSP
+#
+# The set is Unicode's own: general category Cf, "format". Hand-written
+# ranges (ZWSP..RLM, LRE..RLO, LRI..PDI, the BOM) covered the block a
+# reviewer happened to think of and left the rest of the same class through
+# - U+061C ARABIC LETTER MARK is a Bidi_Control and was not marked, and
+# neither were U+00AD, U+180E, U+206A..U+206F or the interlinear annotation
+# marks U+FFF9..U+FFFB. Cf is exactly the class the comment above describes,
+# and it is a strict superset of the ranges it replaces, so nothing that
+# used to be marked stopped being marked.
 
 
 def tame(text):
     """Control characters out. A repo directory named with an embedded ESC
     would otherwise recolor the caller's terminal from our own header."""
     return "".join("?" if ch < " " or "\x7f" <= ch <= "\x9f"
-                   or ch in INVISIBLE else ch for ch in str(text))
+                   or unicodedata.category(ch) == "Cf" else ch
+                   for ch in str(text))
 
 
 def oneline(text, limit=60):
@@ -227,6 +229,28 @@ def fit(text, cells):
     return ""
 
 
+def env_line(prefix, tail, tail2=None, joiner=": "):
+    """`prefix` + user text, cut so `git-mood: ` plus all of it fits 80 cells.
+
+    Every environment message is printed as `git-mood: <message>`, so the
+    budget for the message is 80 cells less that prefix, and the budget for
+    the elastic tail is whatever the fixed words leave of it.
+
+    It has to be fit() and not oneline(): oneline()'s limit counts
+    characters, and forty CJK characters are forty characters and eighty
+    cells, so a path of them rendered a 114-cell line under a rule that
+    believed it had already trimmed. `tail2` is for the one message with two
+    elastic parts; it gets whatever the first one leaves.
+    """
+    room = 80 - len(PROG) - len(": ") - display_width(prefix)
+    if tail2 is None:
+        return prefix + fit(tail, max(room, 0))
+    room -= display_width(joiner)
+    head = fit(tail, max(room // 2, 0))
+    return prefix + head + joiner + fit(tail2,
+                                        max(room - display_width(head), 0))
+
+
 # Everything a POSIX shell reads as more than text. Advice that pastes a
 # value holding one of these is a command line the reader cannot paste back:
 # `--author=--a$(id)` looks like a search and runs `id`.
@@ -272,7 +296,12 @@ def take_value(flag, inline, argv, i, literal=""):
                 and len(PROG) + 2 + display_width(advice) <= 80):
             # Still say which form works; only the value is withheld.
             advice = "use the %s=VALUE form to %s" % (flag, literal)
-        raise Usage("%s needs a value; that is a flag" % flag,
+        # What was detected is the shape, not the identity: `-a b` and
+        # `-中中中` are refused for beginning with `-`, and calling either
+        # of them "a flag" told the user their own value was something it
+        # is not. The echo line below shows it; this line says why it was
+        # not taken.
+        raise Usage("%s needs a value; that one begins with -" % flag,
                     echo=value, advice=advice if literal else None)
     return argv[i], i + 1
 
@@ -376,19 +405,24 @@ def run_git(args, timeout=120):
     except subprocess.TimeoutExpired:
         raise EnvProblem("git timed out after %d seconds" % timeout)
     except OSError as exc:
-        raise EnvProblem("could not run git: %s" % oneline(exc))
+        raise EnvProblem(env_line("could not run git: ", str(exc)))
 
 
-def git_says(done, limit=120):
+def git_says(done):
     """git's own first line of complaint, or "" when it said nothing.
 
     Only the first line: the rest of a git error is usually a worked example
     indented under it, and this program's errors are one line each.
+
+    Flattened but not cut here. It used to trim to 120 characters, which is
+    both too long for the line it lands on and measured in the wrong unit;
+    the caller wraps it in env_line() with the prefix it is about to print,
+    so the trim happens once, in cells, against the real budget.
     """
     for line in done.stderr.decode("utf-8", "replace").splitlines():
         line = line.strip()
         if line:
-            return oneline(line, limit)
+            return oneline(line, 200)
     return ""
 
 
@@ -397,18 +431,17 @@ def check_directory(path):
     try:
         os.stat(path)
     except FileNotFoundError:
-        raise EnvProblem("no such directory: %s" % oneline(path))
+        raise EnvProblem(env_line("no such directory: ", path))
     except NotADirectoryError:
-        raise EnvProblem("not a directory: %s" % oneline(path))
+        raise EnvProblem(env_line("not a directory: ", path))
     except PermissionError:
-        raise EnvProblem("permission denied: %s" % oneline(path))
+        raise EnvProblem(env_line("permission denied: ", path))
     except OSError as exc:
-        raise EnvProblem("cannot read %s: %s" % (oneline(path, 30),
-                                                 oneline(exc.strerror, 30)))
+        raise EnvProblem(env_line("cannot read ", path, exc.strerror or ""))
     if not os.path.isdir(path):
-        raise EnvProblem("not a directory: %s" % oneline(path))
+        raise EnvProblem(env_line("not a directory: ", path))
     if not os.access(path, os.R_OK | os.X_OK):
-        raise EnvProblem("permission denied: %s" % oneline(path))
+        raise EnvProblem(env_line("permission denied: ", path))
 
 
 def resolve_repo(path):
@@ -435,8 +468,8 @@ def resolve_repo(path):
         # says that in its own voice and names the path it was handed.
         reason = git_says(done)
         if reason and "not a git repository" not in reason.lower():
-            raise EnvProblem("git says: %s" % reason)
-        raise EnvProblem("not a git repository: %s" % oneline(path))
+            raise EnvProblem(env_line("git says: ", reason))
+        raise EnvProblem(env_line("not a git repository: ", path))
     git_dir = done.stdout.decode("utf-8", "replace").strip()
     top = os.path.abspath(os.path.join(path, git_dir))
     # `.../repo/.git` names the repo `repo`; `.../repo.git` names itself.
@@ -480,8 +513,8 @@ def read_commits(top):
     args = ["-C", top, "log", "-z", "--pretty=format:%aI%x1f%aN%x1f%aE"]
     done = run_git(args)
     if done.returncode != 0:
-        raise EnvProblem("git log failed: %s"
-                         % (git_says(done) or "no reason given"))
+        raise EnvProblem(env_line("git log failed: ",
+                                  git_says(done) or "no reason given"))
     return parse_log(done.stdout.decode("utf-8", "replace"))
 
 
@@ -702,12 +735,18 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
     # committed in 141 days". The shorter lead is there for the arithmetic
     # that will not fit the long one - a repo idle for decades with a
     # double-figure pile of future dates - and says the same thing.
-    quiet = "nothing committed in %d days" % idle
+    # Both numbers on this line are grouped. The short form used to print
+    # "idle 739000 days, ignoring 9,999,999 future dates" - the same kind of
+    # count, one row, two spellings - and the metronomic line two rows below
+    # already argues that a number should not read one way here and another
+    # way somewhere else on the page.
+    idle_days = "%s days" % "{:,}".format(idle)
+    quiet = "nothing committed in " + idle_days
     if ahead:
         quiet += ", ignoring %s" % count(ahead, "future date")
         if GUTTER + display_width(quiet) + len(" (line: 21 days)") > 80:
-            quiet = ("idle %d days, ignoring %s"
-                     % (idle, count(ahead, "future date")))
+            quiet = ("idle %s, ignoring %s"
+                     % (idle_days, count(ahead, "future date")))
 
     # Tested in this order, and at most three print, so the order decides
     # what a repo that fires five is described as. The two tags about
@@ -993,11 +1032,13 @@ def render_tempo(weekly, start, clamped, today, ink, g):
     first_day = start + timedelta(days=7 * newest[0])
     span_days, elapsed = 7 * newest[1], (today - first_day).days + 1
     if 0 < elapsed < span_days:
-        if size == 1:
-            aged = "the newest week is %s old" % count(elapsed, "day")
-        else:
-            aged = ("the newest column is %d of %d days old"
-                    % (elapsed, span_days))
+        # One shape at both scales. The bucketed form said "69 of 70 days
+        # old" and the week form said "6 days old", which is the same fact
+        # in two spellings and the shorter one is ambiguous: a week whose
+        # Monday was six days ago has six of its seven days behind it, and
+        # "6 days old" reads just as easily as "over already".
+        aged = ("the newest %s is %d of %d days old"
+                % (unit, elapsed, span_days))
         whole = aged + "; the rate divides by whole weeks"
         lines.append(ink.dim(INDENT + (whole if GUTTER + display_width(whole)
                                        <= 80 else aged)))
@@ -1006,8 +1047,13 @@ def render_tempo(weekly, start, clamped, today, ink, g):
         # the peak column. Hung off the peak caption, the note claimed they
         # were in a column that does not hold them; it gets its own line and
         # names the column that does.
-        lines.append(ink.dim(INDENT + "%s dated after today, counted in the "
-                             "newest column" % count(clamped, "commit")))
+        # Worded from the column rather than from the commits, because the
+        # streaks panel six rows down opens its own future-date disclosure
+        # with "N commit(s) dated after today" and the page was saying the
+        # same five words twice. Both still disclose; only this one leads
+        # with the column it is about.
+        lines.append(ink.dim(INDENT + "the newest column also holds %s dated "
+                             "after today" % count(clamped, "commit")))
     return lines
 
 
@@ -1024,8 +1070,25 @@ def render_clock(grid, ink, g):
             glyph = cell_glyph(value, top, g)
             cells.append(ink.accent(glyph) if hour < 6 and value else glyph)
         lines.append(ink.dim(INDENT + day + "  ") + "".join(cells))
-    lines.append(ink.dim(INDENT + "one cell per hour of the week" + g["sep"]
-                         + "darkest = %s" % count(top, "commit")))
+    # Shade already has a key on this line; hue had none anywhere, on screen
+    # or in --help, while the accent was the one splash of color in the whole
+    # program and the first thing a stranger sees in the screenshot. It is
+    # printed only when color is actually being emitted: under --no-color,
+    # NO_COLOR, TERM=dumb or a pipe there is nothing teal on the page and a
+    # key to it would name a color the reader cannot see.
+    #
+    # One wording, not a long one that shortens under pressure: the hours are
+    # written the way the ruler two rows up writes them, and a key that said
+    # "00:00-05:59" on a small repo and "00-05" on a large one would be the
+    # same fact in two shapes. It costs 15 cells, and this line runs to 65
+    # before it - so it fits unless one hour of one weekday holds a million
+    # commits, at which point the key drops rather than the line running wide.
+    key = (INDENT + "one cell per hour of the week" + g["sep"]
+           + "darkest = %s" % count(top, "commit"))
+    clause = g["sep"] + "teal = 00-05"
+    if ink.enabled and display_width(key + clause) <= 80:
+        key += clause
+    lines.append(ink.dim(key))
     lines.append(ink.dim(INDENT + "author-local time, exactly as recorded "
                                   "in each commit"))
     return lines
@@ -1082,12 +1145,14 @@ def write(stream, text, ascii_=False):
     whole output stays below U+0080 whatever the repo is called. A stream that
     is closed (`git-mood >&-` leaves sys.stdout as None) is not a crash.
 
-    `ascii_` is the --ascii drawing mode and nothing else. Passing it on every
-    stderr write made the two streams disagree about the same string: stdout
-    printed an author of 漢字テスト as typed while the "you typed:" echo, whose
-    whole job is to show the user their own text, printed a row of "?". Both
-    streams now sanitise the same way (tame(), on the way in) and encode with
-    the encoding the stream itself reports.
+    `ascii_` is the --ascii flag and only that flag, on both streams alike.
+    It used to be hard-coded True for every stderr write, which made the two
+    streams disagree about the same string on a run that never asked for
+    ASCII: stdout printed an author of 漢字テスト as typed while the "you
+    typed:" echo, whose whole job is to show the user their own text, printed
+    a row of "?". Reading the flag instead of assuming it keeps that fixed and
+    still lets --ascii cover stderr, which is where a path or an author value
+    the terminal cannot draw is most likely to end up.
     """
     if stream is None:
         return False
@@ -1156,7 +1221,7 @@ def build(opts, today, g, ink):
         # These belong to no week and no hour, so they cannot go on a panel.
         # The note goes to stderr: it survives `| head -1`, and it cannot
         # change what any number already on the chart means.
-        write(sys.stderr, note)
+        write(sys.stderr, note, opts.ascii_)
     if not commits:
         if undated:
             return page("", "%s %s nothing to chart."
@@ -1218,10 +1283,28 @@ def build(opts, today, g, ink):
             + render_mood(tags, evidence, ink, g))
 
 
+def ascii_requested(argv):
+    """Is --ascii on this command line, as a flag and not as a path?
+
+    Read before parse_args(), because parse_args()'s own errors go to stderr
+    and --ascii is a promise about everything this program writes, not only
+    about the chart. Reading it during the scan would have honoured the flag
+    only when it came before the mistake. The scan stops at `--` for the same
+    reason parse_args() does: after it, `--ascii` is a directory name.
+    """
+    for arg in argv:
+        if arg == "--":
+            return False
+        if arg == "--ascii":
+            return True
+    return False
+
+
 def main(argv):
     # Without this, `git-mood | head -3` raises BrokenPipeError on exit.
     if hasattr(signal, "SIGPIPE"):
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    ascii_ = ascii_requested(argv)
     try:
         opts = parse_args(argv)
         plain = ascii_only(opts, GLYPHS)
@@ -1231,18 +1314,18 @@ def main(argv):
         emit("\n".join(lines) + "\n", opts.ascii_)
     except Usage as exc:
         tail = "; try: %s --help" % PROG if exc.tip else ""
-        write(sys.stderr, "%s: %s%s\n" % (PROG, exc, tail))
+        write(sys.stderr, "%s: %s%s\n" % (PROG, exc, tail), ascii_)
         if exc.echo is not None:
             # Quoted, because an empty value is a thing the user typed too:
             # `--weeks=` printed "you typed:" and then a trailing space, so
             # the one line meant to show the argument showed nothing at all.
             write(sys.stderr, '%s: you typed: "%s"\n'
-                  % (PROG, fit(exc.echo, 55)))
+                  % (PROG, fit(exc.echo, 55)), ascii_)
         if exc.advice:
-            write(sys.stderr, "%s: %s\n" % (PROG, exc.advice))
+            write(sys.stderr, "%s: %s\n" % (PROG, exc.advice), ascii_)
         return EXIT_USAGE
     except EnvProblem as exc:
-        write(sys.stderr, "%s: %s\n" % (PROG, exc))
+        write(sys.stderr, "%s: %s\n" % (PROG, exc), ascii_)
         return EXIT_ENV
     except KeyboardInterrupt:
         return EXIT_INTERRUPT

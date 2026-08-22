@@ -14,7 +14,7 @@ Three caveats:
 
 - **The newest column is short.** It runs to today, which is short of its full span unless today is a Sunday; the caption says how many of that column's days have elapsed, and that the `commits/week` rate divides by whole weeks anyway.
 - **`N authors` counts addresses.** Distinct author email addresses, lower-cased — two people sharing an address count once, and one person committing under two addresses counts twice; `--author` matches the composed `Name <email>` instead.
-- **The width is fixed.** The layout does not read `COLUMNS` and does not adapt: nothing it prints passes 80 columns, a chart is never under 61, and a page that says there is nothing to chart never under 60. Which line is widest depends on the repository — usually the rule under the title, a tempo caption or a mood line. Never the sparkline: it stops at 60 columns and wraps last.
+- **The width is fixed.** The layout does not read `COLUMNS` and does not adapt. Nothing it prints is wider than 80 columns, on stdout or on stderr.
 
 The whole table of tags, so you can check one against the output. They are tested in this order and at most three print, so a repo that fires five shows the first three:
 
