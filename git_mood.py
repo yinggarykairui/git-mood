@@ -1183,7 +1183,10 @@ def main(argv):
         tail = "; try: %s --help" % PROG if exc.tip else ""
         write(sys.stderr, "%s: %s%s\n" % (PROG, exc, tail))
         if exc.echo is not None:
-            write(sys.stderr, "%s: you typed: %s\n"
+            # Quoted, because an empty value is a thing the user typed too:
+            # `--weeks=` printed "you typed:" and then a trailing space, so
+            # the one line meant to show the argument showed nothing at all.
+            write(sys.stderr, '%s: you typed: "%s"\n'
                   % (PROG, fit(exc.echo, 55)))
         if exc.advice:
             write(sys.stderr, "%s: %s\n" % (PROG, exc.advice))
