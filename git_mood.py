@@ -909,19 +909,23 @@ def render_tempo(weekly, start, clamped, today, ink, g):
     # but only when there is one to point at. On a flat repo every week held
     # the same count and max() picked the oldest, so a chart with no shape at
     # all read as "something happened in February".
-    peak = top
-    tied = [c for c in columns if c[2] == peak]
+    # The count is grouped, like every other four-digit number on the page:
+    # the header says "1,200 commits" and the clock says "darkest = 1,200
+    # commits", and "peak 1200" two rows between them read as a third,
+    # different number.
+    peak = "{:,}".format(top)
+    tied = [c for c in columns if c[2] == top]
     unit = "week" if size == 1 else "column"
     if len(tied) == 1:
         first, span = tied[0][0], tied[0][1]
         when = (start + timedelta(days=7 * first)).isoformat()
         where = "the week of %s" % when if span == 1 else \
                 "the %s from %s" % (count(span, "week"), when)
-        peak_line = "peak %d in %s" % (peak, where)
+        peak_line = "peak %s in %s" % (peak, where)
     elif len(tied) == len(columns):
-        peak_line = "every %s holds %d" % (unit, peak)
+        peak_line = "every %s holds %s" % (unit, peak)
     else:
-        peak_line = "peak %d, tied across %s" % (peak, count(len(tied), unit))
+        peak_line = "peak %s, tied across %s" % (peak, count(len(tied), unit))
     # bucket_columns leaves the short column, if there is one, at the oldest
     # end. Saying only "one column = 16 weeks" made that 9-week bar read as a
     # lull, so the odd column is named whenever it exists.
