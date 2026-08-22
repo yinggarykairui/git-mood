@@ -211,9 +211,14 @@ def parse_args(argv):
 
     Clustering (`-aw 4`) is deliberately not split; it reports as an unknown
     option rather than guessing.
+
+    --help and --version are recorded and acted on after the scan, not in the
+    middle of it. Printing on sight made `git-mood --help nonsense` exit 0
+    with the help text, which reads as "that command line was fine".
     """
     path, weeks, whole, author, ascii_, color = None, 26, False, None, False, True
     i, only_paths = 0, False
+    want, want_flag, seen = None, None, 0
     while i < len(argv):
         arg = argv[i]
         i += 1
@@ -226,11 +231,13 @@ def parse_args(argv):
         elif arg == "--":
             only_paths = True          # everything after is a path, even `-x`
         elif arg in ("-h", "--help"):
-            emit(HELP)
-            raise SystemExit(0)
+            want, want_flag, seen = HELP, arg, seen + 1
         elif arg in ("-V", "--version"):
-            emit("%s %s\n" % (PROG, VERSION))
-            raise SystemExit(0)
+            # --help wins when both are given: it is the larger answer, and
+            # it names --version anyway.
+            if want is None:
+                want, want_flag = "%s %s\n" % (PROG, VERSION), arg
+            seen += 1
         elif arg in ("-a", "--all"):
             whole = True
         elif arg == "--ascii":
@@ -249,6 +256,11 @@ def parse_args(argv):
             path = arg
         else:
             raise Usage("unexpected argument: %s" % oneline(arg, 24))
+    if want is not None:
+        if seen != len(argv):
+            raise Usage("%s takes no other arguments" % want_flag)
+        emit(want)
+        raise SystemExit(0)
     return Options(path or ".", weeks, whole, author, ascii_, color)
 
 
