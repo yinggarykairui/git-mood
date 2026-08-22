@@ -929,9 +929,14 @@ def emit(text, ascii_=False):
 
 
 def window_words(opts, nweeks):
-    """Name the window the numbers describe, so a dead end says which one."""
+    """Name the window the numbers describe, so a dead end says which one.
+
+    --all reads one branch, not the repository: "the whole history" promised
+    the reader that a commit on another branch would have been counted, and
+    sent them looking for a bug when it was not.
+    """
     if opts.whole:
-        return "the whole history", ""
+        return "the current branch's whole history", ""
     return "the last %s" % count(nweeks, "week"), " try --all."
 
 
