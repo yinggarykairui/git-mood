@@ -57,10 +57,10 @@ matches the composed "Name <email>" instead, so the two can disagree.
 The layout is built for 80 columns; COLUMNS is not read and the layout
 does not adapt.
 
-The mood tags are nicknames for numbers, not psychology. Every tag that
-fires on a threshold prints the measured number and the line it crossed,
-so you can disagree with it. The three tags about a window of the week
-also print the share an evenly spread history would put in that window,
+The mood tags are nicknames for numbers, not psychology. Every threshold
+tag it prints carries the measured number and the line it crossed, so you
+can disagree with it. The three tags about a window of the week also
+print the share an evenly spread history would put in that window,
 because a line below that share would fire on no pattern at all.
 "unremarkable" is the one tag with no arithmetic to show, because
 nothing crossed anything. Tags are tested in a fixed order (on a tear,
