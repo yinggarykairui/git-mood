@@ -733,7 +733,14 @@ def streaks(days, today):
             run += 1
         else:
             run, run_start = 1, day
-        if run > best:
+        # `>=`, not `>`: on a repo of scattered single days every streak
+        # ties at one, and keeping the first put `longest 1 day, 2007-04-14`
+        # directly above `current 1 day, through <today>` - two panels
+        # reporting the same length at dates nineteen years apart, which
+        # reads as a data error rather than as the tie it is. The most
+        # recent run of the winning length is the one that matches what the
+        # rest of the page is talking about.
+        if run >= best:
             best, best_start, best_end = run, run_start, day
         prev = day
     anchor = None
