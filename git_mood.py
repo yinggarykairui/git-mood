@@ -345,8 +345,24 @@ def take_value(flag, inline, argv, i, literal=""):
     return argv[i], i + 1
 
 
+# int() accepts more than "an integer from 1 to 520" describes: `1_0` is
+# ten, an Arabic-Indic four is four, a fullwidth two-six is twenty-six, and
+# surrounding whitespace is skipped - so command lines nobody would call
+# the same charted the same window, while the plainly-numeric `3.0` was
+# refused. The CLI's contract is the digits it prints, so that is what it
+# reads.
+DIGITS = frozenset("0123456789")
+
+
+def integer_shaped(raw):
+    body = raw[1:] if raw[:1] in ("+", "-") else raw
+    return bool(body) and all(ch in DIGITS for ch in body)
+
+
 def parse_weeks(raw):
     try:
+        if not integer_shaped(raw):
+            raise ValueError(raw)
         n = int(raw)
     except ValueError:
         raise Usage("--weeks needs an integer from 1 to %d" % MAX_WEEKS,
