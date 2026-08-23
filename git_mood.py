@@ -425,13 +425,30 @@ def short_option_problem(arg):
     if arg[1] == "-" or "=" in arg:
         return "unknown option", {"echo": arg}
     if all(ch in SHORT_FLAGS + SHORT_VALUED for ch in body):
+        # The advice is a command line, so it has to be one that works.
+        # `-wa` split left to right is `-w -a`, and `-w` then eats the flag
+        # and refuses it - the "advice that does not work is worse than
+        # none" the take_value() docstring rules out. The valued options go
+        # last instead, each shown with the value it needs.
+        rewrite = " ".join(["-" + ch for ch in body if ch in SHORT_FLAGS]
+                           + ["-%s N" % ch for ch in body
+                              if ch in SHORT_VALUED])
+        advice = "write them separately: %s" % rewrite
+        # The enumeration stops earning its place long before it overhangs:
+        # `-aaaa...` printed a 146-cell line listing `-a` thirty-eight
+        # times. Cutting it would print a command line that is not the one
+        # being advised, so past the budget it is dropped whole.
+        if len(PROG) + 2 + display_width(advice) > 80:
+            advice = "write them separately, one dash each"
         return ("short options cannot be combined",
-                {"echo": arg, "advice": "write them separately: %s"
-                 % " ".join("-" + ch for ch in body)})
+                {"echo": arg, "advice": advice})
     if body[0] in SHORT_VALUED:
-        return ("-%s takes its value as a separate argument" % body[0],
+        # Not "takes its value as a separate argument": `-w=8` is accepted
+        # and charts eight weeks. What `-w8` is missing is the = or the
+        # space, which is what the two forms below show.
+        return ("-%s does not take an attached value" % body[0],
                 {"echo": arg,
-                 "advice": "write it as -%s N, or --weeks=N" % body[0]})
+                 "advice": "write it as -%s N or -%s=N" % (body[0], body[0])})
     return "unknown option", {"echo": arg}
 
 
@@ -1520,7 +1537,10 @@ def main(argv):
             # the one line meant to show the argument showed nothing at all.
             write(sys.stderr, '%s: you typed: "%s"\n'
                   % (PROG, fit(exc.echo, 55)), ascii_)
-        if exc.advice:
+        # A backstop, not the budget: every advice this program raises is
+        # built to fit, and one that somehow does not is dropped rather
+        # than cut, because a cut command line is a different command line.
+        if exc.advice and len(PROG) + 2 + display_width(exc.advice) <= 80:
             write(sys.stderr, "%s: %s\n" % (PROG, exc.advice), ascii_)
         return EXIT_USAGE
     except EnvProblem as exc:
