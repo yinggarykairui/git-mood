@@ -37,7 +37,8 @@ options:
       --author STR  keep commits whose "Name <email>" contains STR
                     (case-insensitive substring, not a regex; STR may
                     span the brackets: --author "lace <ada")
-      --ascii       draw with plain ASCII instead of block characters
+      --ascii       draw with plain ASCII instead of block characters; text
+                    above U+007F is escaped as \\uXXXX, not dropped
       --no-color    never emit ANSI color; a non-empty NO_COLOR, TERM=dumb
                     and a non-tty stdout do the same
   -h, --help        show this and exit; wins over -V if both are given
@@ -163,12 +164,49 @@ class EnvProblem(Exception):
 # used to be marked stopped being marked.
 
 
+# --ascii is a promise about the bytes this program writes, and write()
+# used to keep it with encode("ascii", "replace") - one "?" per codepoint,
+# applied after every width was measured. On the chart that is only ugly;
+# on an error line it destroys the datum the line exists to carry, because
+# the path the reader has to go fix is exactly the part that is not ASCII:
+#     git-mood --ascii /tmp/<four CJK chars>  ->  not a git repository: /tmp/????
+# Escaping instead of replacing keeps the path recoverable, and doing it
+# here rather than in write() keeps it measurable: tame() runs before
+# oneline(), fit() and display_width(), so an escape that costs six cells
+# is budgeted as six cells and an 80-column line stays an 80-column line.
+# Escaping after the fit is what would overhang.
+ASCII_OUT = False
+
+
+def ascii_escape(ch):
+    point = ord(ch)
+    return "\\u%04x" % point if point <= 0xFFFF else "\\U%08x" % point
+
+
 def tame(text):
     """Control characters out. A repo directory named with an embedded ESC
-    would otherwise recolor the caller's terminal from our own header."""
-    return "".join("?" if ch < " " or "\x7f" <= ch <= "\x9f"
-                   or unicodedata.category(ch) == "Cf" else ch
-                   for ch in str(text))
+    would otherwise recolor the caller's terminal from our own header.
+
+    Under --ascii, everything else above U+007F is escaped rather than
+    dropped: a control character carries no datum worth keeping and stays a
+    "?", while a path or an author name does. The backslash is doubled so
+    the escaped form is unambiguous - a directory literally named `\\u4e2d`
+    and one named with the character do not print the same.
+    """
+    out = []
+    for ch in str(text):
+        if ch < " " or "\x7f" <= ch <= "\x9f" \
+                or unicodedata.category(ch) == "Cf":
+            out.append("?")
+        elif not ASCII_OUT:
+            out.append(ch)
+        elif ch == "\\":
+            out.append("\\\\")
+        elif ch < "\x7f":
+            out.append(ch)
+        else:
+            out.append(ascii_escape(ch))
+    return "".join(out)
 
 
 def oneline(text, limit=60):
@@ -1319,6 +1357,9 @@ def main(argv):
     if hasattr(signal, "SIGPIPE"):
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     ascii_ = ascii_requested(argv)
+    # Before parse_args(), for the same reason ascii_requested() is read
+    # there: parse_args()'s own errors are output too.
+    globals()["ASCII_OUT"] = ascii_
     try:
         opts = parse_args(argv)
         plain = ascii_only(opts, GLYPHS)
