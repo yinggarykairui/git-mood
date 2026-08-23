@@ -1002,8 +1002,8 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
     # to the one fact a reader wants first. The rest keep the order they had.
     candidates = [
         # Both lines carry the unit their threshold is measured in. Moved
-        # to the top of the order they sit above "(line: 20%)" and
-        # "(line: 25%)", where a bare "(line: 5)" reads as another percent.
+        # to the top of the order they sit above "(line: 50%)" and
+        # "(line: 57%)", where a bare "(line: 5)" reads as another percent.
         (current >= 5, "on a tear",
          "%d days in a row with at least one commit (line: 5 days)"
          % current),
