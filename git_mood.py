@@ -845,14 +845,20 @@ def nearer(new, old, today):
     """Is `new` the better date to report a tied streak at?
 
     Both are commit dates, which are the authors' own and can run past
-    today; the panel says so when they do. Between two ties, a date that
-    has happened is the one the rest of the page is talking about.
+    today; the panel says so when they do. Between two ties, the one
+    nearest what the rest of the page is talking about wins: a date that
+    has happened beats one that has not, later beats earlier among dates
+    that have, and among dates that have all not happened yet the earliest
+    is the least far past the window the header printed. Preferring the
+    later one there sent a repo whose only two commits are dated next week
+    and next month to the month, which is the disagreement this function
+    exists to shrink.
     """
     if old is None:
         return True
     if (new > today) != (old > today):
         return old > today
-    return new > old
+    return new < old if new > today else new > old
 
 
 def streaks(days, today):
@@ -1557,7 +1563,12 @@ def main(argv):
         # sentence that actually fixes the command on line 3, so the reader
         # met the weaker answer first and the stronger one after two lines
         # of looking. When there is no advice the tip is all there is.
-        tail = "; try: %s --help" % PROG if exc.tip and not exc.advice else ""
+        # One decision, read twice. Testing `exc.advice` here and its
+        # width below would drop both on an advice too wide to print,
+        # leaving the reader a message, their own token, and no next step.
+        advice = exc.advice if exc.advice and len(PROG) + 2 \
+            + display_width(exc.advice) <= 80 else None
+        tail = "; try: %s --help" % PROG if exc.tip and not advice else ""
         write(sys.stderr, "%s: %s%s\n" % (PROG, exc, tail), ascii_)
         if exc.echo is not None:
             # Quoted, because an empty value is a thing the user typed too:
@@ -1565,11 +1576,8 @@ def main(argv):
             # the one line meant to show the argument showed nothing at all.
             write(sys.stderr, '%s: you typed: "%s"\n'
                   % (PROG, fit(exc.echo, 55)), ascii_)
-        # A backstop, not the budget: every advice this program raises is
-        # built to fit, and one that somehow does not is dropped rather
-        # than cut, because a cut command line is a different command line.
-        if exc.advice and len(PROG) + 2 + display_width(exc.advice) <= 80:
-            write(sys.stderr, "%s: %s\n" % (PROG, exc.advice), ascii_)
+        if advice:
+            write(sys.stderr, "%s: %s\n" % (PROG, advice), ascii_)
         return EXIT_USAGE
     except EnvProblem as exc:
         write(sys.stderr, "%s: %s\n" % (PROG, exc), ascii_)
