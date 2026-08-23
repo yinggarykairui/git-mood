@@ -12,7 +12,7 @@ One `git log` call becomes four panels: a sparkline of commits per week, a 7×24
 
 ## The tags
 
-Tested in this order; at most three print, and if more fired the tag line ends `+N more` for the count it cut, without naming them.
+Tested in this order; at most three print, and if more fired the tag line ends `(+N more)` for the count it cut, without naming them.
 
 A tag about a window of the week has to clear more than the window's own size, or it fires on the absence of a pattern: 6 of 24 hours is a quarter of an evenly spread day, so a `nocturnal` line at 20% would fire on a repo with no night habit at all. Each of the three sits at roughly twice the share an evenly spread history would put in its window, and prints that share beside its line as `baseline`.
 

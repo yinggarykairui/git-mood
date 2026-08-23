@@ -66,7 +66,8 @@ because a line below that share would fire on no pattern at all.
 nothing crossed anything. Tags are tested in a fixed order (on a tear,
 dormant, nocturnal, weekend-coded, nine-to-five, burst-driven,
 metronomic) and at most three print; when more fired than that, the mood
-line ends with "+N more" for the count it cut. The cut tags are not
+line ends with "(+N more)" for the count it cut - bracketed, so it does
+not read as one more tag on a stream with no color. The cut tags are not
 named - a tag is only worth reading with its arithmetic under it, and
 there is room for three of those.
 """
@@ -1413,9 +1414,12 @@ def render_mood(tags, evidence, cut, ink, g):
     if cut:
         # A plain space, not the tag separator: " . +2 more" sitting in the
         # same slot the separator marks would read as a fourth tag, which is
-        # the confusion this suffix exists to end. Dim for the same reason -
-        # it is a note about the list, not a member of it.
-        named += ink.dim(" +%d more" % cut)
+        # the confusion this suffix exists to end. The brackets do that work
+        # with no styling at all: piped, redirected or under --no-color the
+        # dim is gone and a bare "weekend-coded +1 more" parses as one long
+        # tag name. Dim is still there when color is on, for the same reason
+        # the brackets are - it is a note about the list, not a member of it.
+        named += " " + ink.dim("(+%d more)" % cut)
     lines = [ink.dim(gutter("mood")) + named]
     lines.extend(INDENT + line for line in evidence)
     return lines
