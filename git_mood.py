@@ -211,6 +211,40 @@ def tame(text):
     return "".join(out)
 
 
+def whole_escapes(text):
+    """`text` with a trailing half-written escape removed.
+
+    The trims below cut one character at a time, and under --ascii the
+    characters being cut are the six of a `\\u4e2d`. A budget that runs out
+    mid-token printed `"\\u4e2d\\u4e2`, which is not a prefix of the name
+    the reader is being shown: it is a backslash-u meaning nothing, dangling
+    off the end of a value whose whole job is to be checkable.
+    """
+    if not ASCII_OUT:
+        return text
+    kept, i, end = 0, 0, len(text)
+    while i < end:
+        if text[i] != "\\":
+            i += 1
+        else:
+            nxt = text[i + 1:i + 2]
+            if nxt == "\\":
+                i += 2
+            elif nxt == "u":
+                i += 6
+            elif nxt == "U":
+                i += 10
+            else:
+                # tame() writes a backslash only as the first character of
+                # one of the three tokens above, so a backslash followed by
+                # anything else is one of them with its tail already cut.
+                break
+        if i > end:
+            break
+        kept = i
+    return text[:kept]
+
+
 def oneline(text, limit=60):
     """Errors are one line, so user data never breaks the format.
 
@@ -232,8 +266,8 @@ def oneline(text, limit=60):
     if len(flat) <= limit:
         return flat
     if limit < 4:
-        return flat[:max(limit, 0)]
-    return flat[:limit - 3] + "..."
+        return whole_escapes(flat[:max(limit, 0)])
+    return whole_escapes(flat[:limit - 3]) + "..."
 
 
 def display_width(text):
@@ -265,6 +299,7 @@ def fit(text, cells):
         cut = flat
         while cut and display_width(cut) > room:
             cut = cut[:-1]
+        cut = whole_escapes(cut)
         if cut:
             return cut + tail
     return ""
