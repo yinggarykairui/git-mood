@@ -1079,7 +1079,11 @@ def render_clock(grid, ink, g):
     # program and the first thing a stranger sees in the screenshot. It is
     # printed only when color is actually being emitted: under --no-color,
     # NO_COLOR, TERM=dumb or a pipe there is nothing teal on the page and a
-    # key to it would name a color the reader cannot see.
+    # key to it would name a color the reader cannot see. Emitting color is
+    # necessary and not sufficient: only cells that hold commits are tinted,
+    # so a repo whose commits all land in daylight draws nothing teal on a
+    # tty either, and the key named a color that was not on the page. The
+    # `tinted` test is the same condition the loop above tints on.
     #
     # One wording, not a long one that shortens under pressure: the hours are
     # written the way the ruler two rows up writes them, and a key that said
@@ -1090,7 +1094,8 @@ def render_clock(grid, ink, g):
     key = (INDENT + "one cell per hour of the week" + g["sep"]
            + "darkest = %s" % count(top, "commit"))
     clause = g["sep"] + "teal = 00-05"
-    if ink.enabled and display_width(key + clause) <= 80:
+    tinted = any(row[hour] for row in grid for hour in range(6))
+    if ink.enabled and tinted and display_width(key + clause) <= 80:
         key += clause
     lines.append(ink.dim(key))
     lines.append(ink.dim(INDENT + "author-local time, exactly as recorded "
