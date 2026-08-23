@@ -993,11 +993,21 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
          "%d days in a row with at least one commit (line: 5 days)"
          % current),
         (idle >= 21, "dormant", "%s (line: 21 days)" % quiet),
-        (night >= 20, "nocturnal",
-         "%d%% of commits land between 00:00 and 05:59 (line: 20%%)"
+        # A window tag's line has to sit above the share an evenly spread
+        # history already puts in that window, or the tag fires on the
+        # *absence* of a pattern. These two did not: 6 of 24 hours is 25% of
+        # an even day and the line was 20%, 2 of 7 days is 28.6% of an even
+        # week and the line was 25%. A repo of 168 commits, one per
+        # hour-of-week slot - as featureless as a repo can be - printed
+        # "dormant - nocturnal - weekend-coded". Both lines are now twice
+        # their own baseline. nine-to-five below is left alone: 60% against
+        # the 26.8% that 45 of 168 hours gives is already 2.24x, which is
+        # why it is the one window tag that never misfired.
+        (night >= 50, "nocturnal",
+         "%d%% of commits land between 00:00 and 05:59 (line: 50%%)"
          % pct(night)),
-        (weekend >= 25, "weekend-coded",
-         "%d%% of commits land on a Saturday or Sunday (line: 25%%)"
+        (weekend >= 57, "weekend-coded",
+         "%d%% of commits land on a Saturday or Sunday (line: 57%%)"
          % pct(weekend)),
         (office >= 60, "nine-to-five",
          "%d%% of commits land Mon-Fri, 09:00-17:59 (line: 60%%)"
