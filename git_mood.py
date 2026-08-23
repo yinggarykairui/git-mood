@@ -48,7 +48,8 @@ options:
 
 Times are the author's own local clock, exactly as recorded in each commit.
 Nothing is converted to your timezone. When color is on, the punch card
-tints the 00:00-05:59 hours; its caption says so.
+tints any commits it holds in the 00:00-05:59 hours; the caption says so
+when there are any to tint.
 
 "N authors" counts distinct author email addresses, lower-cased. --author
 matches the composed "Name <email>" instead, so the two can disagree.
@@ -830,6 +831,20 @@ def punch_card(commits):
     return grid
 
 
+def nearer(new, old, today):
+    """Is `new` the better date to report a tied streak at?
+
+    Both are commit dates, which are the authors' own and can run past
+    today; the panel says so when they do. Between two ties, a date that
+    has happened is the one the rest of the page is talking about.
+    """
+    if old is None:
+        return True
+    if (new > today) != (old > today):
+        return old > today
+    return new > old
+
+
 def streaks(days, today):
     """Return (longest, its start, its end, current, current end)."""
     ordered = sorted(days)
@@ -840,14 +855,17 @@ def streaks(days, today):
             run += 1
         else:
             run, run_start = 1, day
-        # `>=`, not `>`: on a repo of scattered single days every streak
-        # ties at one, and keeping the first put `longest 1 day, 2007-04-14`
-        # directly above `current 1 day, through <today>` - two panels
-        # reporting the same length at dates nineteen years apart, which
-        # reads as a data error rather than as the tie it is. The most
-        # recent run of the winning length is the one that matches what the
-        # rest of the page is talking about.
-        if run >= best:
+        # On a repo of scattered single days every streak ties at one, and
+        # keeping the first put `longest 1 day, 2007-04-14` directly above
+        # `current 1 day, through <today>` - two panels reporting the same
+        # length at dates years apart, which reads as a data error rather
+        # than as the tie it is. So a tie moves the report forward.
+        #
+        # Not simply to the last one, though: a plain `>=` handed the title
+        # to a commit dated 2030 on a repo whose header two panels up says
+        # the window ends today, which is a worse disagreement than the one
+        # it was fixing. nearer() prefers a date that has happened.
+        if run > best or (run == best and nearer(day, best_end, today)):
             best, best_start, best_end = run, run_start, day
         prev = day
     anchor = None
