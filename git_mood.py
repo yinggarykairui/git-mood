@@ -510,15 +510,20 @@ def git_says(done):
     Only the first line: the rest of a git error is usually a worked example
     indented under it, and this program's errors are one line each.
 
-    Flattened but not cut here. It used to trim to 120 characters, which is
-    both too long for the line it lands on and measured in the wrong unit;
-    the caller wraps it in env_line() with the prefix it is about to print,
-    so the trim happens once, in cells, against the real budget.
+    Raw. It used to trim to 120 characters, which is both too long for the
+    line it lands on and measured in the wrong unit; the caller wraps it in
+    env_line() with the prefix it is about to print, so the flatten, the
+    tame and the trim all happen once, there, against the real budget.
+
+    Taming it here as well was harmless while a second pass only replaced
+    "?" with "?". It stopped being harmless when --ascii began escaping:
+    the first pass wrote `\u00e9` and the second escaped its backslash, so
+    git's own sentence reached the reader as `\\u00e9` - the escape that
+    means a literal six-character name.
     """
     for line in done.stderr.decode("utf-8", "replace").splitlines():
-        line = line.strip()
-        if line:
-            return oneline(line, 200)
+        if line.strip():
+            return line.strip()[:200]
     return ""
 
 
@@ -1354,7 +1359,6 @@ def build(opts, today, g, ink):
         # `notbare.git`, and stripping the suffix off that one named a
         # directory nobody has.
         name = name[:-len(".git")]
-    name = tame(name)
 
     def page(summary, message):
         """Header, then exactly one line. Never a half-drawn chart."""
