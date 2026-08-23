@@ -951,7 +951,6 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
     formatted for print, so no tag fires below the line it quotes and no
     evidence line contradicts its own rule.
     """
-    tags, evidence = [], []
     total = len(commits)
     nonempty = [w for w in weekly if w > 0]
     mid = median(nonempty)
