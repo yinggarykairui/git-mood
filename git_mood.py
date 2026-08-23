@@ -117,7 +117,7 @@ ASCII_GLYPHS = {
 }
 
 Commit = namedtuple("Commit", "date hour weekday name email")
-Options = namedtuple("Options", "path weeks whole author ascii_ color")
+Options = namedtuple("Options", "path weeks whole author ascii_ color given")
 
 
 class Usage(Exception):
@@ -422,7 +422,14 @@ def parse_args(argv):
                         echo=path, tip=False)
         emit(want)
         raise SystemExit(0)
-    return Options(path or ".", weeks, whole, author, ascii_, color)
+    # `path or "."` collapsed two different command lines into one: no
+    # argument at all, and an argument that is the empty string. The first
+    # should not be quoted back at the reader as a path they never typed;
+    # the second is a bad path like any other and gets the exit-1 treatment
+    # every other bad path gets, rather than silently charting the cwd -
+    # which is what a script passing an unset "$VAR" hits.
+    return Options("." if path is None else path, weeks, whole, author,
+                   ascii_, color, path is not None)
 
 
 # --------------------------------------------------------------------------
@@ -465,26 +472,36 @@ def git_says(done):
     return ""
 
 
-def check_directory(path):
-    """Say which of the three ways a path can fail actually happened."""
+def check_directory(path, label=None):
+    """Say which of the three ways a path can fail actually happened.
+
+    `label` is how the path is named in the message. It differs from `path`
+    in exactly one case: no path argument was given, and quoting "." back at
+    a reader who typed nothing reads as an echo of their own text when every
+    other message on this stream is one.
+    """
+    if label is None:
+        label = path
+    if path == "":
+        raise EnvProblem('no such directory: ""')
     try:
         os.stat(path)
     except FileNotFoundError:
-        raise EnvProblem(env_line("no such directory: ", path))
+        raise EnvProblem(env_line("no such directory: ", label))
     except NotADirectoryError:
-        raise EnvProblem(env_line("not a directory: ", path))
+        raise EnvProblem(env_line("not a directory: ", label))
     except PermissionError:
-        raise EnvProblem(env_line("permission denied: ", path))
+        raise EnvProblem(env_line("permission denied: ", label))
     except OSError as exc:
-        raise EnvProblem(env_line("cannot read ", path,
+        raise EnvProblem(env_line("cannot read ", label,
                                   exc.strerror or str(exc)))
     if not os.path.isdir(path):
-        raise EnvProblem(env_line("not a directory: ", path))
+        raise EnvProblem(env_line("not a directory: ", label))
     if not os.access(path, os.R_OK | os.X_OK):
-        raise EnvProblem(env_line("permission denied: ", path))
+        raise EnvProblem(env_line("permission denied: ", label))
 
 
-def resolve_repo(path):
+def resolve_repo(path, label=None):
     """Return (directory whose basename names the repo, is it the git dir).
 
     A bare repo has no work tree, so --show-toplevel fails there; fall back to
@@ -493,7 +510,9 @@ def resolve_repo(path):
     where a trailing `.git` is part of the repository's plumbing rather than
     part of a directory name the user chose.
     """
-    check_directory(path)
+    if label is None:
+        label = path
+    check_directory(path, label)
     done = run_git(["-C", path, "rev-parse", "--show-toplevel"])
     if done.returncode == 0:
         top = done.stdout.decode("utf-8", "replace").strip()
@@ -509,7 +528,7 @@ def resolve_repo(path):
         reason = git_says(done)
         if reason and "not a git repository" not in reason.lower():
             raise EnvProblem(env_line("git says: ", reason))
-        raise EnvProblem(env_line("not a git repository: ", path))
+        raise EnvProblem(env_line("not a git repository: ", label))
     git_dir = done.stdout.decode("utf-8", "replace").strip()
     top = os.path.abspath(os.path.join(path, git_dir))
     # `.../repo/.git` names the repo `repo`; `.../repo.git` names itself.
@@ -1246,7 +1265,8 @@ def window_words(opts, nweeks):
 
 
 def build(opts, today, g, ink):
-    top, is_git_dir = resolve_repo(opts.path)
+    top, is_git_dir = resolve_repo(
+        opts.path, opts.path if opts.given else "the current directory")
     name = os.path.basename(top.rstrip(os.sep)) or top
     if is_git_dir and name.endswith(".git") and len(name) > len(".git"):
         # A bare repo lives in `name.git`; the repository is still `name`.
