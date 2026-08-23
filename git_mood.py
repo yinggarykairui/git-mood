@@ -938,7 +938,8 @@ def median(values):
 
 
 def mood(commits, weekly, nweeks, current, last_day, ahead, today):
-    """Up to three tags, each with exactly one evidence line.
+    """Up to three tags, each with exactly one evidence line, and a count
+    of the tags that fired past the cap.
 
     Every threshold is tested against the exact measurement and only then
     formatted for print, so no tag fires below the line it quotes and no
@@ -1054,16 +1055,22 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
          "%d%% of %s weeks busy, peak %sx the median week (lines: 60%%, <2x)"
          % (pct(covered), "{:,}".format(nweeks), floor1(ratio))),
     ]
-    for fired, tag, line in candidates:
-        if fired:
-            tags.append(tag)
-            evidence.append(line)
-        if len(tags) == 3:
-            break
+    fired = [(tag, line) for ok, tag, line in candidates if ok]
+    # The cap has always been three; until now it was silent about it. The
+    # thresholds are published, so a reader who correctly works out a fourth
+    # firing tag from their own numbers had no way to tell whether it failed
+    # to fire or was simply cut. The count says which. The tags themselves
+    # are not named: each one is only worth printing with the arithmetic
+    # under it, and the cap is exactly the rule that there are three of
+    # those. `cut` is however many were dropped - the order holds seven
+    # candidates and says nothing about how many of them can hold at once.
+    cut = max(0, len(fired) - 3)
+    tags = [tag for tag, _ in fired[:3]]
+    evidence = [line for _, line in fired[:3]]
     if not tags:
         tags.append("unremarkable")
         evidence.append("nothing in these numbers crosses a line")
-    return tags, evidence
+    return tags, evidence, cut
 
 
 # --------------------------------------------------------------------------
@@ -1394,9 +1401,17 @@ def render_streaks(best, best_start, best_end, current, anchor, last_day,
     return lines
 
 
-def render_mood(tags, evidence, ink, g):
-    lines = [ink.dim(gutter("mood"))
-             + g["sep"].join(ink.bold(tag) for tag in tags)]
+def render_mood(tags, evidence, cut, ink, g):
+    """The tag line, then one evidence line per printed tag - never more
+    than three of either, whatever `cut` says was left off."""
+    named = g["sep"].join(ink.bold(tag) for tag in tags)
+    if cut:
+        # A plain space, not the tag separator: " . +2 more" sitting in the
+        # same slot the separator marks would read as a fourth tag, which is
+        # the confusion this suffix exists to end. Dim for the same reason -
+        # it is a note about the list, not a member of it.
+        named += ink.dim(" +%d more" % cut)
+    lines = [ink.dim(gutter("mood")) + named]
     lines.extend(INDENT + line for line in evidence)
     return lines
 
@@ -1536,9 +1551,9 @@ def build(opts, today, g, ink):
     # otherwise sets `idle` negative and silences the tag on a repo that has
     # in fact been quiet for a year. The streaks panel below still gets the
     # commits' own maximum - it prints those dates and says they run ahead.
-    tags, evidence = mood(commits, weekly, nweeks, current,
-                          max([d for d in days if d <= today] or [max(days)]),
-                          clamped, today)
+    tags, evidence, cut = mood(
+        commits, weekly, nweeks, current,
+        max([d for d in days if d <= today] or [max(days)]), clamped, today)
 
     return (render_head(name, render_summary(commits, opts, nweeks, start,
                                              today, g), g)
@@ -1547,7 +1562,7 @@ def build(opts, today, g, ink):
             + render_clock(punch_card(commits), ink, g) + [""]
             + render_streaks(best, best_start, best_end, current, anchor,
                              max(days), clamped, today, ink, g) + [""]
-            + render_mood(tags, evidence, ink, g))
+            + render_mood(tags, evidence, cut, ink, g))
 
 
 def ascii_requested(argv):
