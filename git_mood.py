@@ -59,10 +59,16 @@ does not adapt.
 
 The mood tags are nicknames for numbers, not psychology. Every tag that
 fires on a threshold prints the measured number and the line it crossed,
-so you can disagree with it. "unremarkable" is the one tag with no
-arithmetic to show, because nothing crossed anything. Tags are tested in
-a fixed order (on a tear, dormant, nocturnal, weekend-coded,
-nine-to-five, burst-driven, metronomic) and at most three print.
+so you can disagree with it. The three tags about a window of the week
+also print the share an evenly spread history would put in that window,
+because a line below that share would fire on no pattern at all.
+"unremarkable" is the one tag with no arithmetic to show, because
+nothing crossed anything. Tags are tested in a fixed order (on a tear,
+dormant, nocturnal, weekend-coded, nine-to-five, burst-driven,
+metronomic) and at most three print; when more fired than that, the mood
+line ends with "+N more" for the count it cut. The cut tags are not
+named - a tag is only worth reading with its arithmetic under it, and
+there is room for three of those.
 """
 
 # HELP is the one string that never goes through the --ascii ramp, so it

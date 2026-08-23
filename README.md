@@ -12,18 +12,20 @@ One `git log` call becomes four panels: a sparkline of commits per week, a 7×24
 
 ## The tags
 
-Tested in this order; at most three print, so a repo that fires five shows the first three.
+Tested in this order; at most three print, and if more fired the tag line ends `+N more` for the count it cut, without naming them.
 
-| tag | fires when |
-|---|---|
-| `on a tear` | a current streak of ≥5 days |
-| `dormant` | nothing committed for ≥21 days |
-| `nocturnal` | ≥20% of commits between 00:00 and 05:59 |
-| `weekend-coded` | ≥25% of commits on a Saturday or Sunday |
-| `nine-to-five` | ≥60% of commits Mon–Fri, 09:00–17:59 |
-| `burst-driven` | ≥4 weeks with commits, and the busiest is ≥3× their median |
-| `metronomic` | a window of ≥4 weeks, ≥60% of them with a commit, and the busiest <2× the median |
-| `unremarkable` | nothing above fired |
+A tag about a window of the week has to clear more than the window's own size, or it fires on the absence of a pattern: 6 of 24 hours is a quarter of an evenly spread day, so the old `nocturnal` line of 20% fired on no night habit at all. Each of the three now sits at roughly twice the share an evenly spread history would put in its window, and prints that share beside its line as `chance`.
+
+| tag | fires when | chance |
+|---|---|---|
+| `on a tear` | a current streak of ≥5 days | — |
+| `dormant` | nothing committed for ≥21 days | — |
+| `nocturnal` | ≥50% of commits between 00:00 and 05:59 | 25% |
+| `weekend-coded` | ≥57% of commits on a Saturday or Sunday | 29% |
+| `nine-to-five` | ≥60% of commits Mon–Fri, 09:00–17:59 | 27% |
+| `burst-driven` | ≥4 weeks with commits, and the busiest is ≥3× their median | — |
+| `metronomic` | a window of ≥4 weeks, ≥60% of them with a commit, and the busiest <2× the median | — |
+| `unremarkable` | nothing above fired | — |
 
 Three things the numbers do not say:
 
