@@ -39,8 +39,8 @@ options:
       --author STR  keep commits whose "Name <email>" contains STR
                     (case-insensitive substring, not a regex; STR may
                     span the brackets: --author "lace <ada")
-      --ascii       draw with plain ASCII instead of block characters; text
-                    above U+007F is escaped as \\uXXXX, not dropped
+      --ascii       draw with plain ASCII instead of block characters;
+                    printable text above U+007F is escaped, not dropped
       --no-color    never emit ANSI color; a non-empty NO_COLOR, TERM=dumb
                     and a non-tty stdout do the same
   -h, --help        show this and exit; wins over -V if both are given
@@ -397,16 +397,19 @@ def integer_shaped(raw):
     return bool(body) and all(ch in DIGITS for ch in body)
 
 
-def parse_weeks(raw):
+def parse_weeks(raw, flag="--weeks"):
+    """`flag` is the token the user typed. take_value() already refuses to
+    report `-w` as `--weeks`, and these two messages were the place the
+    same flag still named itself two different ways."""
     try:
         if not integer_shaped(raw):
             raise ValueError(raw)
         n = int(raw)
     except ValueError:
-        raise Usage("--weeks needs an integer from 1 to %d" % MAX_WEEKS,
+        raise Usage("%s needs an integer from 1 to %d" % (flag, MAX_WEEKS),
                     echo=raw)
     if not 1 <= n <= MAX_WEEKS:
-        raise Usage("--weeks must be from 1 to %d" % MAX_WEEKS, echo=raw)
+        raise Usage("%s must be from 1 to %d" % (flag, MAX_WEEKS), echo=raw)
     return n
 
 
@@ -440,7 +443,14 @@ def short_option_problem(arg):
         # times. Cutting it would print a command line that is not the one
         # being advised, so past the budget it is dropped whole.
         if len(PROG) + 2 + display_width(advice) > 80:
-            advice = "write them separately, one dash each"
+            # The fallback is held to the same test as the form it
+            # replaces: "one dash each" alone is not a runnable
+            # instruction for a cluster holding -w, which still needs its
+            # value.
+            advice = ("write them separately, one dash each, each -%s with "
+                      "its own N" % SHORT_VALUED[0]
+                      if any(ch in SHORT_VALUED for ch in body)
+                      else "write them separately, one dash each")
         return ("short options cannot be combined",
                 {"echo": arg, "advice": advice})
     if body[0] in SHORT_VALUED:
@@ -499,7 +509,7 @@ def parse_args(argv):
             color = False
         elif flag in ("-w", "--weeks"):
             raw, i = take_value(flag, inline, argv, i)
-            weeks = parse_weeks(raw)
+            weeks = parse_weeks(raw, flag)
         elif flag == "--author":
             author, i = take_value(flag, inline, argv, i,
                                    "search for it as text")
