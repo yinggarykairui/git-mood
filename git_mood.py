@@ -501,6 +501,21 @@ def check_directory(path, label=None):
         raise EnvProblem(env_line("permission denied: ", label))
 
 
+def git_path(done):
+    """git's stdout as a path, or "" - never something exec() will reject.
+
+    A `git` on PATH that answers `rev-parse --show-toplevel` with a NUL byte
+    in it got that byte handed straight back to the next subprocess call,
+    where it surfaced as `ValueError: embedded null byte` and a traceback.
+    --help names `git` on PATH as a requirement, so a shimmed or wrapped git
+    is a documented failure surface and owes a sentence, not a stack.
+    """
+    text = done.stdout.decode("utf-8", "replace").strip()
+    if "\x00" in text:
+        raise EnvProblem("git answered with a NUL byte in the path")
+    return text
+
+
 def resolve_repo(path, label=None):
     """Return (directory whose basename names the repo, is it the git dir).
 
@@ -515,7 +530,7 @@ def resolve_repo(path, label=None):
     check_directory(path, label)
     done = run_git(["-C", path, "rev-parse", "--show-toplevel"])
     if done.returncode == 0:
-        top = done.stdout.decode("utf-8", "replace").strip()
+        top = git_path(done)
         if top:
             return top, False
     done = run_git(["-C", path, "rev-parse", "--git-dir"])
@@ -528,8 +543,16 @@ def resolve_repo(path, label=None):
         reason = git_says(done)
         if reason and "not a git repository" not in reason.lower():
             raise EnvProblem(env_line("git says: ", reason))
+        if not reason:
+            # git failing without a word is not evidence about the
+            # directory. A `git` shim exiting 77 in silence was reported as
+            # `not a git repository` against a directory that is one, which
+            # sends the reader to fix the wrong thing; the exit code is the
+            # only fact in hand, so it is the one printed.
+            raise EnvProblem("git rev-parse exited %d and said nothing"
+                             % done.returncode)
         raise EnvProblem(env_line("not a git repository: ", label))
-    git_dir = done.stdout.decode("utf-8", "replace").strip()
+    git_dir = git_path(done)
     top = os.path.abspath(os.path.join(path, git_dir))
     # `.../repo/.git` names the repo `repo`; `.../repo.git` names itself.
     if os.path.basename(top) == ".git":
