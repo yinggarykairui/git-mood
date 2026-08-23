@@ -966,10 +966,10 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
     # number every window tag's line has to beat to mean anything. It is a
     # constant of the window and not of the data, so it is derived from the
     # window's own size through the same share()/pct() pair the measurements
-    # go through - a printed "chance" cannot drift from the hours it counts.
-    night_chance = pct(share(6, 24))            # 6 of 24 hours -> 25.0
-    weekend_chance = pct(share(2, 7))           # 2 of 7 days   -> 28.6
-    office_chance = pct(share(9 * 5, 24 * 7))   # 45 of 168 h   -> 26.8
+    # go through - a printed "baseline" cannot drift from the hours it counts.
+    night_baseline = pct(share(6, 24))            # 6 of 24 hours -> 25.0
+    weekend_baseline = pct(share(2, 7))           # 2 of 7 days   -> 28.6
+    office_baseline = pct(share(9 * 5, 24 * 7))   # 45 of 168 h   -> 26.8
     covered = share(len(nonempty), nweeks)
     idle = (today - last_day).days
 
@@ -1019,20 +1019,20 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
         # the 26.8% that 45 of 168 hours gives is already 2.24x, which is
         # why it is the one window tag that never misfired.
         #
-        # All three quote their chance next to their line, because the line
-        # alone does not say whether it is a pattern: "25% of commits land
-        # between 00:00 and 05:59" was a true sentence about a repo with no
-        # night habit at all, and only the baseline beside it tells a reader
-        # which of the two they are looking at.
+        # All three quote their baseline next to their line, because the
+        # line alone does not say whether it is a pattern: "25% of commits
+        # land between 00:00 and 05:59" was a true sentence about a repo
+        # with no night habit at all, and only that number beside it tells
+        # a reader which of the two they are looking at.
         (night >= 50, "nocturnal",
          "%d%% of commits land between 00:00 and 05:59 "
-         "(line: 50%%, chance: %d%%)" % (pct(night), night_chance)),
+         "(line: 50%%, baseline: %d%%)" % (pct(night), night_baseline)),
         (weekend >= 57, "weekend-coded",
          "%d%% of commits land on a Saturday or Sunday "
-         "(line: 57%%, chance: %d%%)" % (pct(weekend), weekend_chance)),
+         "(line: 57%%, baseline: %d%%)" % (pct(weekend), weekend_baseline)),
         (office >= 60, "nine-to-five",
          "%d%% of commits land Mon-Fri, 09:00-17:59 "
-         "(line: 60%%, chance: %d%%)" % (pct(office), office_chance)),
+         "(line: 60%%, baseline: %d%%)" % (pct(office), office_baseline)),
         (len(nonempty) >= 4 and ratio >= 3.0, "burst-driven",
          "the busiest week holds %sx the median week (line: 3x)"
          % floor1(ratio)),
