@@ -49,8 +49,8 @@ tints the 00:00-05:59 hours; its caption says so.
 "N authors" counts distinct author email addresses, lower-cased. --author
 matches the composed "Name <email>" instead, so the two can disagree.
 
-COLUMNS is not read and the layout does not adapt. Nothing printed is
-wider than 80 columns, on stdout or on stderr.
+The layout is built for 80 columns; COLUMNS is not read and the layout
+does not adapt.
 
 The mood tags are nicknames for numbers, not psychology. Every tag that
 fires on a threshold prints the measured number and the line it crossed,

@@ -12,9 +12,9 @@ One `git log` call becomes four panels: a sparkline of commits per week — buck
 
 Three caveats:
 
-- **The newest column is short.** It runs to today, which is short of its full span unless today is a Sunday; the caption says how many of that column's days have elapsed, and that the `commits/week` rate divides by whole weeks anyway.
+- **The newest column is short.** It runs to today, which is short of its full span unless today is a Sunday; the caption says how many of that column's days have elapsed; the `commits/week` rate divides by whole weeks anyway.
 - **`N authors` counts addresses.** Distinct author email addresses, lower-cased — two people sharing an address count once, and one person committing under two addresses counts twice; `--author` matches the composed `Name <email>` instead.
-- **The width is fixed.** The layout does not read `COLUMNS` and does not adapt. Nothing it prints is wider than 80 columns, on stdout or on stderr.
+- **The width is fixed.** The layout is built for 80 columns, does not read `COLUMNS`, and does not adapt.
 
 The whole table of tags, so you can check one against the output. They are tested in this order and at most three print, so a repo that fires five shows the first three:
 
