@@ -30,6 +30,8 @@ usage: git-mood [path] [options]
 
   path              a git repository, or any directory inside one
                     (default: the current directory)
+  --                end the options; everything after it is the path,
+                    even if it begins with a dash
 
 options:
   -w, --weeks N     how many weeks back to read (default: 26, max: 520)
@@ -372,6 +374,32 @@ def parse_weeks(raw):
     return n
 
 
+SHORT_FLAGS = "ahV"          # short options that take no value
+SHORT_VALUED = "w"           # short options that take one
+
+
+def short_option_problem(arg):
+    """(message, kwargs) for a `-...` token no branch in the scan claimed.
+
+    Clustering is tested first: every character of `-wa` is a flag this
+    program has, and calling that an attached value because it starts with
+    the one short option that takes one answers a question nobody asked.
+    `-w8` reaches the second test because `8` is no flag.
+    """
+    body = arg[1:]
+    if arg[1] == "-" or "=" in arg:
+        return "unknown option", {"echo": arg}
+    if all(ch in SHORT_FLAGS + SHORT_VALUED for ch in body):
+        return ("short options cannot be combined",
+                {"echo": arg, "advice": "write them separately: %s"
+                 % " ".join("-" + ch for ch in body)})
+    if body[0] in SHORT_VALUED:
+        return ("-%s takes its value as a separate argument" % body[0],
+                {"echo": arg,
+                 "advice": "write it as -%s N, or --weeks=N" % body[0]})
+    return "unknown option", {"echo": arg}
+
+
 def parse_args(argv):
     """Hand-rolled so --help is a verbatim string and every input is spec'd.
 
@@ -423,7 +451,13 @@ def parse_args(argv):
             author, i = take_value(flag, inline, argv, i,
                                    "search for it as text")
         elif arg.startswith("-") and arg != "-":
-            raise Usage("unknown option", echo=arg)
+            # "unknown option" sent the reader hunting for a flag named
+            # `aw`. Both shapes below are made of flags --help does list,
+            # so the answer is how to write them, not that they do not
+            # exist. The docstring's "deliberately not split" stands: this
+            # names the rule instead of guessing at the intent.
+            message, extra = short_option_problem(arg)
+            raise Usage(message, **extra)
         elif path is None:
             path = arg
         else:
@@ -1434,7 +1468,12 @@ def main(argv):
                       Ink(color_enabled(opts)))
         emit("\n".join(lines) + "\n", opts.ascii_)
     except Usage as exc:
-        tail = "; try: %s --help" % PROG if exc.tip else ""
+        # The generic pointer steps aside for a specific one. `--author -x`
+        # printed "try: git-mood --help" as a clause on line 1 and the
+        # sentence that actually fixes the command on line 3, so the reader
+        # met the weaker answer first and the stronger one after two lines
+        # of looking. When there is no advice the tip is all there is.
+        tail = "; try: %s --help" % PROG if exc.tip and not exc.advice else ""
         write(sys.stderr, "%s: %s%s\n" % (PROG, exc, tail), ascii_)
         if exc.echo is not None:
             # Quoted, because an empty value is a thing the user typed too:
