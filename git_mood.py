@@ -38,7 +38,8 @@ options:
                     (case-insensitive substring, not a regex; STR may
                     span the brackets: --author "lace <ada")
       --ascii       draw with plain ASCII instead of block characters
-      --no-color    never emit ANSI color (also honors NO_COLOR)
+      --no-color    never emit ANSI color; a non-empty NO_COLOR, TERM=dumb
+                    and a non-tty stdout do the same
   -h, --help        show this and exit; wins over -V if both are given
   -V, --version     show the version and exit
 
@@ -838,7 +839,11 @@ class Ink(object):
 def color_enabled(opts):
     if not opts.color:
         return False
-    if os.environ.get("NO_COLOR") is not None:
+    # no-color.org: the variable disables color "when present and not an
+    # empty string". `is not None` honoured `NO_COLOR=` as well, which is
+    # how a shell exports a variable it was told to leave unset, and the
+    # convention says that case must not suppress.
+    if os.environ.get("NO_COLOR"):
         return False
     if os.environ.get("TERM") == "dumb":
         return False
