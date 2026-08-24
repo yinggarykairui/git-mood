@@ -1034,8 +1034,16 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
         (office >= 60, "nine-to-five",
          "%d%% of commits land Mon-Fri, 09:00-17:59 "
          "(line: 60%%, baseline: %d%%)" % (pct(office), office_baseline)),
+        # "the median week" was not the median of the weeks on the chart
+        # above - it is the median of the weeks that have commits, which is
+        # the only denominator either rhythm tag has ever used. On a repo
+        # with 22 empty weeks of 26 the chart's own median is 0, so a reader
+        # doing the division the line invited divided by nothing; on a
+        # metronomic repo it was worse than undefined, because the naive
+        # median lands on the *other side* of the "<2x" bound this line
+        # prints. Both lines now name the weeks they measure.
         (len(nonempty) >= 4 and ratio >= 3.0, "burst-driven",
-         "the busiest week holds %sx the median week (line: 3x)"
+         "the busiest week holds %sx the median busy week (line: 3x)"
          % floor1(ratio)),
         # Two thresholds, one of them a `<` bound, and the only line in the
         # program that ever passed 80 columns - at --weeks 520 an older
@@ -1046,20 +1054,19 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
         #
         # The coverage is a percentage because the line it quotes is one:
         # "26 of 26 weeks busy ... (lines: 60%, ...)" measured in weeks and
-        # quoted in percent, leaving the reader to divide. "the median week"
-        # matches burst-driven two rows up, which measures the same ratio
-        # against the same denominator and names it.
+        # quoted in percent, leaving the reader to divide. "the median busy
+        # week" matches burst-driven two rows up, which measures the same
+        # ratio against the same denominator and now names it the same way.
         #
-        # Worst case 77 columns. nweeks tops out in the thousands: --weeks
-        # caps at 520, and under --all an author date before 1970 comes out
-        # of git as the literal "%aI" and is set aside rather than charted,
-        # so the oldest week this line can count from is 1970's. It is
-        # written with the thousands separator count() gives the header, so
-        # the same number does not read as "1,000 weeks" up there and
-        # "1000 weeks" down here.
+        # Naming it cost five columns this line did not have: the window
+        # count it used to print pushed the worst case to 82. That count is
+        # the one thing on the line the reader already has - render_summary
+        # prints "N weeks" on the header, in every mode - so it gives way
+        # rather than the denominator, and no number leaves the page.
+        # Worst case is now 76 columns, with nothing on the line elastic.
         (nweeks >= 4 and covered >= 60 and ratio < 2.0, "metronomic",
-         "%d%% of %s weeks busy, peak %sx the median week (lines: 60%%, <2x)"
-         % (pct(covered), "{:,}".format(nweeks), floor1(ratio))),
+         "%d%% of weeks busy, peak %sx the median busy week "
+         "(lines: 60%%, <2x)" % (pct(covered), floor1(ratio))),
     ]
     fired = [(tag, line) for ok, tag, line in candidates if ok]
     # The cap has always been three; until now it was silent about it. The
