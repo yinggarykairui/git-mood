@@ -12,7 +12,7 @@ One `git log` call becomes four panels: a sparkline of commits per week, a 7×24
 
 ## The tags
 
-Tested in this order; at most three print, and if more fired the tag line ends `(+N more)` for the count it cut, without naming them.
+Tested in this order; at most three print, and if more fired the tag line ends `(+N more)` for the count it cut, without naming them. Four of the seven rule each other out in pairs, so at most four can fire at once and the one this order cuts is always `burst-driven` or `metronomic` — whichever rhythm the repo has, it is the fact that gives way.
 
 A tag about a window of the week has to clear more than the window's own size, or it fires on the absence of a pattern: 6 of 24 hours is a quarter of an evenly spread day, so a `nocturnal` line at 20% would fire on a repo with no night habit at all. Each of the three sits at roughly twice the share an evenly spread history would put in its window, and prints that share beside its line as `baseline`.
 
@@ -23,8 +23,8 @@ A tag about a window of the week has to clear more than the window's own size, o
 | `nocturnal` | ≥50% of commits between 00:00 and 05:59 | 25% |
 | `weekend-coded` | ≥57% of commits on a Saturday or Sunday | 29% |
 | `nine-to-five` | ≥60% of commits Mon–Fri, 09:00–17:59 | 27% |
-| `burst-driven` | ≥4 weeks with commits, and the busiest is ≥3× their median | — |
-| `metronomic` | a window of ≥4 weeks, ≥60% of them with a commit, and the busiest <2× the median | — |
+| `burst-driven` | ≥4 weeks with commits, and the busiest is ≥3× the median of those weeks | — |
+| `metronomic` | a window of ≥4 weeks, ≥60% of them with a commit, and the busiest <2× the median of the weeks that have one | — |
 | `unremarkable` | nothing above fired | — |
 
 Three things the numbers do not say:
