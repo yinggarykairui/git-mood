@@ -2,8 +2,10 @@
 """git-mood - a terminal mood chart for a git repository.
 
 One file, standard library only. One `git log` call in, four panels out.
-Stat functions take commits and return numbers; render functions take numbers
-and return strings. Nothing computes and renders at the same time.
+Stat functions take commits and return numbers; render functions take those
+numbers and return strings. The summary and tempo renderers are the two that
+also count - authors, bucket sums, the per-week rate - and every threshold in
+the program is decided in mood(), before a single string is built.
 """
 
 import math
@@ -69,7 +71,9 @@ metronomic) and at most three print; when more fired than that, the mood
 line ends with "(+N more)" for the count it cut - bracketed, so it does
 not read as one more tag on a stream with no color. The cut tags are not
 named - a tag is only worth reading with its arithmetic under it, and
-there is room for three of those.
+there is room for three of those. Four of the seven rule each other out
+in pairs, so at most four ever fire and the one cut is always
+"burst-driven" or "metronomic".
 """
 
 # HELP is the one string that never goes through the --ascii ramp, so it
@@ -916,8 +920,10 @@ def pct(value):
     three lines above showed the odd one lit, so the two ends are held back:
     100 is reserved for "all of them" and 0 for "none of them". Between those,
     the nearest whole percent. A tag fires on the exact measurement and never
-    on this number, and for every threshold in this program the rounded value
-    still lands on the firing side of the line, so nothing has to be nudged.
+    on this number, and for every threshold in this program a tag that fires
+    never prints a percent below its own line, so nothing has to be nudged.
+    The converse does not hold and does not need to: 49.5% prints as "50"
+    and does not fire, but a tag that does not fire prints no line at all.
     """
     shown = int(round(value))
     if shown >= 100 and value < 100:
@@ -1075,8 +1081,19 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
     # to fire or was simply cut. The count says which. The tags themselves
     # are not named: each one is only worth printing with the arithmetic
     # under it, and the cap is exactly the rule that there are three of
-    # those. `cut` is however many were dropped - the order holds seven
-    # candidates and says nothing about how many of them can hold at once.
+    # those.
+    #
+    # `cut` is however many were dropped, and four exclusions among the
+    # seven candidates hold it to 0 or 1. "on a tear" needs a commit today
+    # or yesterday and "dormant" needs 21 days without one; "nine-to-five"
+    # shares no hour with "nocturnal" and no day with "weekend-coded", and
+    # 60 + 50 and 60 + 57 both pass 100; "burst-driven" needs >=3x where
+    # "metronomic" needs <2x. Enumerating the 128 subsets under those four
+    # leaves a maximum of four tags, in four shapes - {on a tear | dormant}
+    # x {nocturnal, weekend-coded} x {burst-driven | metronomic} - so the
+    # tag this order cuts is always the rhythm one. The count is written
+    # for an N it cannot reach because the exclusions are properties of the
+    # thresholds, and a threshold is exactly the thing this file changes.
     cut = max(0, len(fired) - 3)
     tags = [tag for tag, _ in fired[:3]]
     evidence = [line for _, line in fired[:3]]
