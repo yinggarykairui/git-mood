@@ -1579,13 +1579,24 @@ def build(opts, today, g, ink):
     clamped = sum(1 for c in commits if c.date > today)
     days = set(c.date for c in commits)
     best, best_start, best_end, current, anchor = streaks(days, today)
+    # tempo shows the future-dated commits, clamped into the newest column and
+    # disclosed there; the rhythm tags must not, because clamping piles them
+    # into one week and manufactures a peak. Four commits dated next month
+    # turned an evenly paced repo's `metronomic` into `burst-driven` claiming
+    # "9x the median busy week" - a burst in a week that has not happened.
+    # dormant already reads only non-future dates; burst-driven and metronomic
+    # now measure the same history, from a weekly count with the future left
+    # out. tempo keeps the clamped `weekly` above, so no commit vanishes from
+    # the chart - only from the verdict about weeks that have occurred.
+    weekly_real = weekly_counts([c for c in commits if c.date <= today],
+                                start, nweeks)
     # The dormant tag measures the gap since the last commit, so it reads the
     # newest date that is not in the future: a single commit dated next month
     # otherwise sets `idle` negative and silences the tag on a repo that has
     # in fact been quiet for a year. The streaks panel below still gets the
     # commits' own maximum - it prints those dates and says they run ahead.
     tags, evidence, cut = mood(
-        commits, weekly, nweeks, current,
+        commits, weekly_real, nweeks, current,
         max([d for d in days if d <= today] or [max(days)]), clamped, today)
 
     return (render_head(name, render_summary(commits, opts, nweeks, start,
