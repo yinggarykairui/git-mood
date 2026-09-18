@@ -79,10 +79,22 @@ options:
                     span the brackets: --author "lace <ada")
       --ascii       draw with plain ASCII instead of block characters;
                     printable text above U+007F is escaped, not dropped
-      --no-color    never emit ANSI color; a non-empty NO_COLOR, TERM=dumb
-                    and a non-tty stdout do the same
+      --color       emit ANSI color even where it would be off by default,
+                    so `git-mood --color | less -R` keeps its color
+      --no-color    never emit ANSI color; wins if --color is given too
   -h, --help        show this and exit; wins over -V if both are given
   -V, --version     show the version and exit
+
+Color is decided by the first of these that applies:
+
+  --no-color              off      (--color loses to it)
+  --color                 on
+  NO_COLOR, non-empty     off
+  FORCE_COLOR or          on       an empty value does not force, the
+  CLICOLOR_FORCE                   same rule NO_COLOR is read by
+  TERM=dumb               off
+  stdout is not a tty     off
+  otherwise               on
 
 Times are the author's own local clock, exactly as recorded in each commit.
 Nothing is converted to your timezone. When color is on, the punch card
@@ -526,7 +538,12 @@ def parse_args(argv):
     printed. An unknown option still raises inside the scan, so `--help
     --nope` is exit 2 the way it always was.
     """
-    path, weeks, whole, author, ascii_, color = None, 26, False, None, False, True
+    path, weeks, whole, author, ascii_ = None, 26, False, None, False
+    # Three states, not two: "auto" is the default and the only one that
+    # consults the terminal. `--no-color` and `--color` are decisions the
+    # caller has already made, and color_enabled() honours them without
+    # asking anything else.
+    color = "auto"
     i, only_paths = 0, False
     want, want_flag = None, None
     while i < len(argv):
@@ -553,7 +570,17 @@ def parse_args(argv):
         elif arg == "--ascii":
             ascii_ = True
         elif arg == "--no-color":
-            color = False
+            # Not last-wins between the two. `--color --no-color` is a
+            # command line asking for both, and of the two answers only one
+            # can be wrong in a way that costs the reader anything: ANSI
+            # written into a file, a pipe, or a terminal that cannot render
+            # it. So refusing wins, the way --help wins over -V, whichever
+            # order they come in - which is why this is not guarded and
+            # `--color` below is.
+            color = "off"
+        elif arg == "--color":
+            if color == "auto":
+                color = "on"
         elif flag in ("-w", "--weeks"):
             raw, i = take_value(flag, inline, argv, i)
             weeks = parse_weeks(raw, flag)
@@ -1163,14 +1190,33 @@ class Ink(object):
 
 
 def color_enabled(opts):
-    if not opts.color:
-        return False
+    """First match wins, and --help prints this list in the same order.
+
+    Every rule below is a statement someone made on purpose, ordered by how
+    specific that someone was: this command line, then this environment,
+    then the terminal's own account of itself, then the shape of stdout.
+    """
+    if opts.color != "auto":
+        return opts.color == "on"
     # no-color.org: the variable disables color "when present and not an
     # empty string". `is not None` honoured `NO_COLOR=` as well, which is
     # how a shell exports a variable it was told to leave unset, and the
     # convention says that case must not suppress.
     if os.environ.get("NO_COLOR"):
         return False
+    # The same emptiness rule, read in the other direction. FORCE_COLOR is
+    # the name most of the ecosystem uses and CLICOLOR_FORCE is the older
+    # one; a program that reads neither cannot be piped into `less -R`, and
+    # this one could not. NO_COLOR is tested first because the convention
+    # says the off switch wins, and because a machine that exports both has
+    # a reason for the safer one.
+    if os.environ.get("FORCE_COLOR") or os.environ.get("CLICOLOR_FORCE"):
+        return True
+    # Below the variables, not above them: TERM=dumb is the terminal
+    # describing itself, and a caller who set FORCE_COLOR after reading that
+    # has overruled it deliberately. Nothing here can render ANSI on a
+    # terminal that truly cannot, but the caller is the one who knows where
+    # this output is going.
     if os.environ.get("TERM") == "dumb":
         return False
     try:

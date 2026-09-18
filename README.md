@@ -51,9 +51,15 @@ python3 git_mood.py --weeks 8            # a shorter window (1-520, default 26)
 python3 git_mood.py --all                # the current branch's entire history
 python3 git_mood.py --author ada         # substring of "Name <email>"
 python3 git_mood.py --ascii --no-color   # plain ASCII, no ANSI
+python3 git_mood.py --color | less -R    # keep the color through a pipe
 python3 git_mood.py -- --weird-dir-name  # end the options; the rest is the path
 python3 git_mood.py --help
 ```
+
+Color is off when stdout is not a terminal. `--color` turns it back on, as do
+a non-empty `FORCE_COLOR` or `CLICOLOR_FORCE`; `--no-color` and a non-empty
+`NO_COLOR` turn it off and win over both. `git-mood --help` prints the full
+order.
 
 To use it as a git subcommand, put the directory on your `PATH`:
 
