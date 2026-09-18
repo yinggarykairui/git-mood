@@ -42,7 +42,20 @@ def interrupted(_signum, _frame):
 # module is still being imported. sys.exit() from a handler raises SystemExit
 # in the main thread; it is a BaseException, no handler in this file catches
 # one, so it unwinds from wherever the signal landed - mid-import, mid-parse,
-# mid-`git log` - and the process leaves with 130 and no traceback.
+# and the process leaves with 130 and no traceback.
+#
+# It is handed back before any of that can matter. main() restores
+# signal.default_int_handler as its first act, so the whole run - parse,
+# `git log`, render, write - keeps exactly the interrupt semantics this
+# program had before tonight, and this handler covers only the window where
+# nothing else can. That is not tidiness. A Python handler runs a Python
+# frame at an arbitrary bytecode boundary, and one landing inside
+# subprocess.Popen can surface between an acquire() and its SETUP_FINALLY,
+# leaving `_waitpid_lock` held by the thread that then blocks on it: the
+# process wedges in futex_do_wait forever with a defunct `git` child and
+# never exits at all. A critic reproduced that 3 times in 6,200 interrupts
+# against this handler and 0 times in 4,800 against the code without it.
+# A wedged CLI is worse than every problem this section is fixing.
 #
 # Only when this file is the program. Installed unconditionally, `import
 # git_mood` from any main thread replaced the importer's own SIGINT
@@ -55,13 +68,14 @@ def interrupted(_signum, _frame):
 # What it does not cover, measured rather than assumed: the interpreter's own
 # startup, the compile of this file, and `import signal` three lines above
 # (~4 ms of it on this machine) all run before the handler exists and answer a
-# Ctrl-C themselves, with -2 and `<frozen site>` or `line 0, in <module>` or
-# `line 17, in <module>`. That is ~19 ms of a ~27 ms startup on this machine;
-# the handler closed the other ~8, which was every module-level statement
-# below it - the ratio moves with the machine, the shape does not. And
-# interpreter finalization restores the default disposition, so the last
-# moments of a run are outside it too. main()'s guard stays for the case where
-# a caller resets the disposition after import.
+# Ctrl-C themselves. The startup exits 1 with `Fatal Python error:
+# init_import_site`; the other two exit -2 with a traceback naming `line 0, in
+# <module>` or `line 17, in <module>`. That is ~19 ms of a ~27 ms startup on
+# this machine; the handler closed the other ~8, which was every module-level
+# statement below it - the ratio moves with the machine, the shape does not.
+# And interpreter finalization restores the default disposition, so the last
+# moments of a run are outside it too, and can leave -2 with the whole chart
+# already on stdout.
 #
 # Imported from a thread that is not the main one, signal.signal() raises
 # ValueError - importing this module is not worth failing over a handler that
@@ -1749,6 +1763,18 @@ def ascii_requested(argv):
 
 
 def main(argv):
+    # Hand SIGINT back to Python for the run itself. The module-level handler
+    # above exists to cover startup; from here on the interrupt semantics are
+    # the ones this program has always had - default_int_handler raises
+    # KeyboardInterrupt from the eval loop, and the guard at the bottom of
+    # this function turns it into 130. default_int_handler, not SIG_DFL: the
+    # latter would terminate the process on the spot and leave -2. The reason
+    # is in the comment on that handler; the short version is that a Python
+    # handler firing inside subprocess.Popen can wedge the process forever.
+    try:
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+    except ValueError:
+        pass
     # Without this, `git-mood | head -3` raises BrokenPipeError on exit.
     if hasattr(signal, "SIGPIPE"):
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
