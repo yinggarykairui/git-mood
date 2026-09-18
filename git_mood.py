@@ -8,23 +8,59 @@ also count - authors, bucket sums, the per-week rate - and every threshold in
 the program is decided in mood(), before a single string is built.
 """
 
-import math
-import os
+# These two imports are out of alphabetical order on purpose, and the rest of
+# the file's imports follow below the handler. A SIGINT can only be caught
+# once `signal` and `sys` are in hand, and every import that runs before the
+# disposition is set is time this program spends uncatchable: measured here,
+# a Ctrl-C landing 10-20 ms in - inside `import unicodedata` and `import
+# subprocess`, the two slow ones - printed a raw traceback and exited -2.
 import signal
-import subprocess
 import sys
-import unicodedata
-from collections import namedtuple
-from datetime import date, timedelta
-
-PROG = "git-mood"
-VERSION = "1.0"
 
 # Exit codes are part of the CLI contract: 0 a chart or a clean "nothing to
-# chart", 1 environment, 2 usage, 130 Ctrl-C.
+# chart", 1 environment, 2 usage, 130 Ctrl-C. The 130 is promised from this
+# file's first statement onward and not before it: a Ctrl-C during the
+# interpreter's own startup or the compile of this file is answered by Python,
+# not by us, and leaves -2. Measured here, that is the first ~22 ms of a ~26 ms
+# startup; the handler below is what closed the other ~4.
 EXIT_ENV = 1
 EXIT_USAGE = 2
 EXIT_INTERRUPT = 130
+
+
+def interrupted(_signum, _frame):
+    """Leave with 130 from wherever the signal landed."""
+    sys.exit(EXIT_INTERRUPT)
+
+
+# 130 was promised unconditionally and delivered only from inside main(): the
+# KeyboardInterrupt guard down there cannot see a SIGINT that lands while this
+# module is still being imported. sys.exit() from a handler raises SystemExit
+# in the main thread; it is a BaseException, no handler in this file catches
+# one, so it unwinds from wherever the signal landed - mid-import, mid-parse,
+# mid-`git log` - and the process leaves with 130 and no traceback. Two things
+# it does not do: it does not close what runs before this file's first
+# statement - the interpreter's own startup and the compile of these 1,700
+# lines, which answer a Ctrl-C with `<frozen site>` and `line 0, in <module>`
+# respectively and are not reachable from inside the program; and it does not
+# replace main()'s guard, which still answers if a caller resets the
+# disposition. Imported from a thread that is not the main one, signal.signal()
+# raises ValueError - importing this module is not worth failing over a handler
+# that thread could not have used anyway.
+try:
+    signal.signal(signal.SIGINT, interrupted)
+except ValueError:
+    pass
+
+import math                                                  # noqa: E402
+import os                                                     # noqa: E402
+import subprocess                                             # noqa: E402
+import unicodedata                                            # noqa: E402
+from collections import namedtuple                            # noqa: E402
+from datetime import date, timedelta                          # noqa: E402
+
+PROG = "git-mood"
+VERSION = "1.0"
 
 HELP = """git-mood - a terminal mood chart for a git repository
 
