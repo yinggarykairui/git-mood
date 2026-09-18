@@ -18,11 +18,15 @@ import signal
 import sys
 
 # Exit codes are part of the CLI contract: 0 a chart or a clean "nothing to
-# chart", 1 environment, 2 usage, 130 Ctrl-C. The 130 is promised from this
-# file's first statement onward and not before it: a Ctrl-C during the
-# interpreter's own startup or the compile of this file is answered by Python,
-# not by us, and leaves -2. Measured here, that is the first ~22 ms of a ~26 ms
-# startup; the handler below is what closed the other ~4.
+# chart", 1 environment, 2 usage, 130 Ctrl-C. The 130 is promised from the
+# moment the handler below is installed - not from the top of this file, and
+# not to the very last instant of the process. Before the handler, Python
+# answers a Ctrl-C itself and leaves -2: the interpreter's own startup, the
+# compile of this file, and the `import signal` on line 17 are all in that
+# window. After the run, interpreter finalization restores the default
+# disposition, so a Ctrl-C arriving in the last moments can leave -2 with the
+# whole chart already on stdout. Both were measured, not assumed; the bounds
+# are in the comment on the handler.
 EXIT_ENV = 1
 EXIT_USAGE = 2
 EXIT_INTERRUPT = 130
@@ -38,21 +42,37 @@ def interrupted(_signum, _frame):
 # module is still being imported. sys.exit() from a handler raises SystemExit
 # in the main thread; it is a BaseException, no handler in this file catches
 # one, so it unwinds from wherever the signal landed - mid-import, mid-parse,
-# mid-`git log` - and the process leaves with 130 and no traceback. Two things
-# it does not do: it does not close what runs before this file's first
-# statement - the interpreter's own startup and the compile of these 1,700
-# lines, which answer a Ctrl-C with `<frozen site>` and `line 0, in <module>`
-# respectively and are not reachable from inside the program; and it does not
-# replace main()'s guard, which still answers if a caller resets the
-# disposition. Imported from a thread that is not the main one, signal.signal()
-# raises ValueError - importing this module is not worth failing over a handler
-# that thread could not have used anyway.
-try:
-    signal.signal(signal.SIGINT, interrupted)
-except ValueError:
-    pass
+# mid-`git log` - and the process leaves with 130 and no traceback.
+#
+# Only when this file is the program. Installed unconditionally, `import
+# git_mood` from any main thread replaced the importer's own SIGINT
+# disposition and its `except KeyboardInterrupt` stopped running - a library
+# quietly deciding how its caller shuts down. The guard costs nothing here:
+# run as a script, __name__ is already "__main__" while this line executes,
+# which is the whole point of installing it during the module body rather
+# than at the top of main().
+#
+# What it does not cover, measured rather than assumed: the interpreter's own
+# startup, the compile of this file, and `import signal` three lines above
+# (~4 ms of it on this machine) all run before the handler exists and answer a
+# Ctrl-C themselves, with -2 and `<frozen site>` or `line 0, in <module>` or
+# `line 17, in <module>`. That is ~19 ms of a ~27 ms startup on this machine;
+# the handler closed the other ~8, which was every module-level statement
+# below it - the ratio moves with the machine, the shape does not. And
+# interpreter finalization restores the default disposition, so the last
+# moments of a run are outside it too. main()'s guard stays for the case where
+# a caller resets the disposition after import.
+#
+# Imported from a thread that is not the main one, signal.signal() raises
+# ValueError - importing this module is not worth failing over a handler that
+# thread could not have used anyway.
+if __name__ == "__main__":
+    try:
+        signal.signal(signal.SIGINT, interrupted)
+    except ValueError:
+        pass
 
-import math                                                  # noqa: E402
+import math                                                   # noqa: E402
 import os                                                     # noqa: E402
 import subprocess                                             # noqa: E402
 import unicodedata                                            # noqa: E402
@@ -87,14 +107,17 @@ options:
 
 Color is decided by the first of these that applies:
 
-  --no-color              off      (--color loses to it)
-  --color                 on
-  NO_COLOR, non-empty     off
-  FORCE_COLOR or          on       an empty value does not force, the
-  CLICOLOR_FORCE                   same rule NO_COLOR is read by
-  TERM=dumb               off
-  stdout is not a tty     off
-  otherwise               on
+  --no-color                       off
+  --color                          on
+  NO_COLOR, non-empty              off
+  FORCE_COLOR, non-empty           on
+  CLICOLOR_FORCE, non-empty        on
+  TERM=dumb                        off
+  stdout is not a terminal         off
+  none of the above                on
+
+"Non-empty" is the whole test on all three: any value counts, including 0
+and false, and a variable exported as "" counts as unset.
 
 Times are the author's own local clock, exactly as recorded in each commit.
 Nothing is converted to your timezone. When color is on, the punch card
@@ -1502,28 +1525,31 @@ def render_streaks(best, best_start, best_end, current, anchor, last_day,
     else:
         now = "current none, last commit %s" % last_day.isoformat()
     lines = [ink.dim(gutter("streaks")) + longest, INDENT + now]
-    if clamped:
+    # The disclosure belongs to this panel's own dates, not to the commit
+    # count. Gated on `clamped` alone it printed "these dates can pass
+    # <today>" on a repo whose every printed date was today or earlier -
+    # a future-dated commit outside every streak this panel reports is a
+    # fact tempo discloses and this panel has nothing to show for. So the
+    # test is whether a date actually on these two lines is after today,
+    # which is what makes "these dates" name something the reader can see.
+    #
+    # An attempt to point back at tempo instead - "the future date above is
+    # why a date here can be later than <today>" - was worse in three ways
+    # at once and was reverted: tempo prints a count and never a date, so
+    # "the future date above" named nothing findable; "today" stopped being
+    # on the panel at all, leaving a bare date; and it still fired when no
+    # date here was later than anything. The count stays here, where the
+    # sentence is self-contained.
+    shown = [d for d in (best_start, best_end,
+                         anchor if current else last_day) if d is not None]
+    if clamped and any(d > today for d in shown):
         # The date is spelled out rather than called "it". The nearest thing
         # for a pronoun to attach to was "today", which made the sentence say
         # that dates after today can run ahead of today; the date it actually
         # means is the one ending the header, five lines up and never named.
-        #
-        # It points back at tempo instead of counting again. Two panels were
-        # disclosing one set of commits in two voices - "N commits with a
-        # future date" up in tempo, "N commits dated after today" here - and
-        # a reader with no reason to connect them read two findings. Naming
-        # them once and referring to them once is the whole fix; the count
-        # stays where it is first given, which also keeps this line a fixed
-        # width instead of one that grows with the number.
-        #
-        # "a date here can be later than" rather than "these dates can pass":
-        # what the reader is looking at is a date on this panel, and the
-        # question the line answers is why that date is ahead of the window
-        # the header closed.
-        ahead_note = ("the future date above is" if clamped == 1
-                      else "the future dates above are")
-        lines.append(ink.dim(INDENT + "%s why a date here can be later "
-                             "than %s" % (ahead_note, today.isoformat())))
+        lines.append(ink.dim(INDENT + "%s dated after today; these dates can "
+                             "pass %s" % (count(clamped, "commit"),
+                                          today.isoformat())))
     return lines
 
 

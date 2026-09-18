@@ -57,9 +57,10 @@ python3 git_mood.py --help
 ```
 
 Color is off when stdout is not a terminal. `--color` turns it back on, as do
-a non-empty `FORCE_COLOR` or `CLICOLOR_FORCE`; `--no-color` and a non-empty
-`NO_COLOR` turn it off and win over both. `git-mood --help` prints the full
-order.
+a non-empty `FORCE_COLOR` or `CLICOLOR_FORCE`. `--no-color` turns it off and
+beats everything, including `--color`; a non-empty `NO_COLOR` turns it off and
+beats the two force variables but not the flags. `git-mood --help` prints the
+whole order, which is the one that decides.
 
 To use it as a git subcommand, put the directory on your `PATH`:
 
