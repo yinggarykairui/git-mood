@@ -1507,9 +1507,23 @@ def render_streaks(best, best_start, best_end, current, anchor, last_day,
         # for a pronoun to attach to was "today", which made the sentence say
         # that dates after today can run ahead of today; the date it actually
         # means is the one ending the header, five lines up and never named.
-        lines.append(ink.dim(INDENT + "%s dated after today; these dates can "
-                             "pass %s" % (count(clamped, "commit"),
-                                          today.isoformat())))
+        #
+        # It points back at tempo instead of counting again. Two panels were
+        # disclosing one set of commits in two voices - "N commits with a
+        # future date" up in tempo, "N commits dated after today" here - and
+        # a reader with no reason to connect them read two findings. Naming
+        # them once and referring to them once is the whole fix; the count
+        # stays where it is first given, which also keeps this line a fixed
+        # width instead of one that grows with the number.
+        #
+        # "a date here can be later than" rather than "these dates can pass":
+        # what the reader is looking at is a date on this panel, and the
+        # question the line answers is why that date is ahead of the window
+        # the header closed.
+        ahead_note = ("the future date above is" if clamped == 1
+                      else "the future dates above are")
+        lines.append(ink.dim(INDENT + "%s why a date here can be later "
+                             "than %s" % (ahead_note, today.isoformat())))
     return lines
 
 
