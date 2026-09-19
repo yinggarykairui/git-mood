@@ -37,49 +37,17 @@ def interrupted(_signum, _frame):
     sys.exit(EXIT_INTERRUPT)
 
 
-# 130 was promised unconditionally and delivered only from inside main(): the
-# KeyboardInterrupt guard down there cannot see a SIGINT that lands while this
-# module is still being imported. sys.exit() from a handler raises SystemExit
-# in the main thread; it is a BaseException, no handler in this file catches
-# one, so it unwinds from wherever the signal landed - mid-import, mid-parse,
-# and the process leaves with 130 and no traceback.
+# Installed only when this file is the program. Unconditionally, `import
+# git_mood` replaces an importer's own SIGINT disposition and its
+# `except KeyboardInterrupt` stops running; off the main thread
+# signal.signal() raises ValueError, which no import should fail over.
 #
-# It is handed back before any of that can matter. main() restores
-# signal.default_int_handler as its first act, so the whole run - parse,
-# `git log`, render, write - keeps exactly the interrupt semantics this
-# program had before tonight, and this handler covers only the window where
-# nothing else can. That is not tidiness. A Python handler runs a Python
-# frame at an arbitrary bytecode boundary, and one landing inside
-# subprocess.Popen can surface between an acquire() and its SETUP_FINALLY,
-# leaving `_waitpid_lock` held by the thread that then blocks on it: the
-# process wedges in futex_do_wait forever with a defunct `git` child and
-# never exits at all. A critic reproduced that 3 times in 6,200 interrupts
-# against this handler and 0 times in 4,800 against the code without it.
-# A wedged CLI is worse than every problem this section is fixing.
-#
-# Only when this file is the program. Installed unconditionally, `import
-# git_mood` from any main thread replaced the importer's own SIGINT
-# disposition and its `except KeyboardInterrupt` stopped running - a library
-# quietly deciding how its caller shuts down. The guard costs nothing here:
-# run as a script, __name__ is already "__main__" while this line executes,
-# which is the whole point of installing it during the module body rather
-# than at the top of main().
-#
-# What it does not cover, measured rather than assumed: the interpreter's own
-# startup, the compile of this file, and `import signal` three lines above
-# (~4 ms of it on this machine) all run before the handler exists and answer a
-# Ctrl-C themselves. The startup exits 1 with `Fatal Python error:
-# init_import_site`; the other two exit -2 with a traceback naming `line 0, in
-# <module>` or `line 17, in <module>`. That is ~19 ms of a ~27 ms startup on
-# this machine; the handler closed the other ~8, which was every module-level
-# statement below it - the ratio moves with the machine, the shape does not.
-# And interpreter finalization restores the default disposition, so the last
-# moments of a run are outside it too, and can leave -2 with the whole chart
-# already on stdout.
-#
-# Imported from a thread that is not the main one, signal.signal() raises
-# ValueError - importing this module is not worth failing over a handler that
-# thread could not have used anyway.
+# main() hands the signal back as its first act, because a Python handler
+# left in place runs a Python frame at an arbitrary bytecode boundary, and
+# one landing inside subprocess.Popen can leave `_waitpid_lock` held by the
+# thread that then blocks on it - a wedge with no exit at all. This covers
+# the import window only; EXIT_INTERRUPT above states the bounds, and
+# LESSONS.md at 2026-09-17 holds the measurements.
 if __name__ == "__main__":
     try:
         signal.signal(signal.SIGINT, interrupted)
@@ -150,27 +118,14 @@ GLYPHS = {
     "dash": "—",
 }
 ASCII_GLYPHS = {
-    # The ramp climbs like the Unicode one: a dot for a week with nothing in
-    # it (the same low-ink mark the punch card uses for an empty cell), then
-    # a baseline stroke for the shortest bar. The old set had these two the
-    # other way round, so an --ascii sparkline drew dead weeks as solid bars
-    # and busy weeks as gaps - the picture upside down.
+    # The ramp climbs: the dot is the empty week - the same low-ink mark the
+    # punch card uses for an empty cell - and the baseline stroke is the
+    # shortest bar. Those two the other way round draw the picture upside
+    # down. Above the first step the order is convention, not measured ink.
     #
-    # Above the first step the order is convention - the ramp people already
-    # read in ASCII art - and not measured ink. This comment used to claim
-    # that "%" carries less ink than "#" "in every monospace face", which is
-    # a promise about every font in the world that nothing here checked. A
-    # survey of rendered coverage across eleven monospace faces says the
-    # opposite of monotone: ":" comes out heavier than "-" and "=" heavier
-    # than "+" in all eleven, "+" heavier than "*" in seven, and the last
-    # step, "%" to "#", runs backwards in Liberation Mono. Ten of eleven
-    # faces do put "#" on top, which is why it is the top step, but that is
-    # a majority and not a law.
-    #
-    # No number on screen depends on any of it. ramp_glyph() picks the step
-    # from the value and the panel maximum, and this string is exactly as
-    # long as the Unicode one, so --ascii and the default choose the same
-    # index for the same week; only the shape drawn there differs.
+    # This string must stay exactly as long as GLYPHS["spark"]. ramp_glyph()
+    # picks a step by index, so a different length would have --ascii and
+    # the default disagree about the same week.
     "spark": "_:-=+*%#",
     "spark_zero": ".",
     "grid_zero": ".",
@@ -1170,22 +1125,12 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
          "%d days in a row with at least one commit (line: 5 days)"
          % current),
         (idle >= 21, "dormant", "%s (line: 21 days)" % quiet),
-        # A window tag's line has to sit above the share an evenly spread
-        # history already puts in that window, or the tag fires on the
-        # *absence* of a pattern. These two did not: 6 of 24 hours is 25% of
-        # an even day and the line was 20%, 2 of 7 days is 28.6% of an even
-        # week and the line was 25%. A repo of 168 commits, one per
-        # hour-of-week slot - as featureless as a repo can be - printed
-        # "dormant - nocturnal - weekend-coded". Both lines are now twice
-        # their own baseline. nine-to-five below is left alone: 60% against
-        # the 26.8% that 45 of 168 hours gives is already 2.24x, which is
-        # why it is the one window tag that never misfired.
-        #
-        # All three quote their baseline next to their line, because the
-        # line alone does not say whether it is a pattern: "25% of commits
-        # land between 00:00 and 05:59" was a true sentence about a repo
-        # with no night habit at all, and only that number beside it tells
-        # a reader which of the two they are looking at.
+        # Each of these three lines has to sit above the share an evenly
+        # spread history already puts in its own window, or the tag fires on
+        # the *absence* of a pattern: 6 of 24 hours is 25% of an even day,
+        # 2 of 7 days 28.6% of an even week, 45 of 168 hours 26.8%. And each
+        # prints that baseline beside its line, because the line alone does
+        # not say which of the two the reader is looking at.
         (night >= 50, "nocturnal",
          "%d%% of commits land between 00:00 and 05:59 "
          "(line: 50%%, baseline: %d%%)" % (pct(night), night_baseline)),
@@ -1206,49 +1151,25 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
         (len(nonempty) >= 4 and ratio >= 3.0, "burst-driven",
          "the busiest week holds %sx the median busy week (line: 3x)"
          % floor1(ratio)),
-        # Two thresholds, one of them a `<` bound, and the only line in the
-        # program that ever passed 80 columns - at --weeks 520 an older
-        # wording reached 83 and dropped a lone ")" at column 0. "lines"
-        # stays plural and "<2x" keeps showing that the second bound points
-        # the other way from the first; spelling it "under 2x" cost four
-        # columns this line does not have.
-        #
-        # The coverage is a percentage because the line it quotes is one:
-        # "26 of 26 weeks busy ... (lines: 60%, ...)" measured in weeks and
-        # quoted in percent, leaving the reader to divide. "the median busy
-        # week" matches burst-driven two rows up, which measures the same
-        # ratio against the same denominator and now names it the same way.
-        #
-        # Naming it cost five columns this line did not have: the window
-        # count it used to print pushed the worst case to 82. That count is
-        # the one thing on the line the reader already has - render_summary
-        # prints "N weeks" on the header, in every mode - so it gives way
-        # rather than the denominator, and no number leaves the page.
-        # Worst case is now 76 columns, with nothing on the line elastic.
+        # This line is at its limit: 76 columns worst case, nothing on it
+        # elastic, and it is the only line in the program that has ever
+        # passed 80. "the median busy week" names the same denominator
+        # burst-driven uses two rows up and has to keep naming it; paying
+        # for that cost the window count, which render_summary prints on the
+        # header in every mode. "lines" plural and "<2x" stay in that shape
+        # for the same four columns.
         (nweeks >= 4 and covered >= 60 and ratio < 2.0, "metronomic",
          "%d%% of weeks busy, peak %sx the median busy week "
          "(lines: 60%%, <2x)" % (pct(covered), floor1(ratio))),
     ]
     fired = [(tag, line) for ok, tag, line in candidates if ok]
-    # The cap has always been three; until now it was silent about it. The
-    # thresholds are published, so a reader who correctly works out a fourth
-    # firing tag from their own numbers had no way to tell whether it failed
-    # to fire or was simply cut. The count says which. The tags themselves
-    # are not named: each one is only worth printing with the arithmetic
-    # under it, and the cap is exactly the rule that there are three of
-    # those.
-    #
-    # `cut` is however many were dropped, and four exclusions among the
-    # seven candidates hold it to 0 or 1. "on a tear" needs a commit today
-    # or yesterday and "dormant" needs 21 days without one; "nine-to-five"
-    # shares no hour with "nocturnal" and no day with "weekend-coded", and
-    # 60 + 50 and 60 + 57 both pass 100; "burst-driven" needs >=3x where
-    # "metronomic" needs <2x. Enumerating the 128 subsets under those four
-    # leaves a maximum of four tags, in four shapes - {on a tear | dormant}
-    # x {nocturnal, weekend-coded} x {burst-driven | metronomic} - so the
-    # tag this order cuts is always the rhythm one. The count is written
-    # for an N it cannot reach because the exclusions are properties of the
-    # thresholds, and a threshold is exactly the thing this file changes.
+    # `cut` is however many the three-tag cap dropped, and four exclusions
+    # among the seven candidates hold it to 0 or 1: "on a tear" against
+    # "dormant", "nine-to-five" against "nocturnal" and against
+    # "weekend-coded" (60 + 50 and 60 + 57 both pass 100), "burst-driven"
+    # against "metronomic". It is still written for an N it cannot reach,
+    # because those exclusions are properties of the thresholds above, and a
+    # threshold is exactly the thing this file changes.
     cut = max(0, len(fired) - 3)
     tags = [tag for tag, _ in fired[:3]]
     evidence = [line for _, line in fired[:3]]
@@ -1490,23 +1411,13 @@ def render_tempo(weekly, start, clamped, today, ink, g):
                 % (width, g["sep"], per_week(sum(weekly), nweeks))),
         ink.dim(INDENT + peak_line),
     ]
-    # The window is Monday-aligned and ends today, so the newest bar is drawn
-    # from a span that has not finished, at full height beside bars that
-    # have. A one-commit Monday next to a five-commit week reads as a
-    # collapse rather than as a week that is one day old, so the caption
-    # says how much of the newest bar's span has actually elapsed.
-    #
-    # Measured on the column, not on the week. Firing on today.weekday()
-    # alone and then saying "6 days into the week" described a week nobody
-    # drew: at `one column = 10 weeks` the newest column is 69 days of 70,
-    # and calling that a fragment is a plain falsehood.
-    #
-    # The consequence rides on the same line, because the reconciliation -
-    # that the rate above divides by whole weeks including this part-week -
-    # was only ever written down in the README, which is not on screen. It
-    # is dropped, and only it, when the two day counts run to three digits
-    # and the line would pass 80; the arithmetic is still printed, and a
-    # column that is 391 days of 392 is not a fragment worth a caveat.
+    # The newest bar is drawn from a span that has not finished, at full
+    # height beside bars that have, so the caption says how much of it has
+    # elapsed. Measured on the column, not on the week: at `one column = 10
+    # weeks` the newest column is 69 days of 70, which today.weekday() alone
+    # would call a fragment. The reconciliation clause - that the rate above
+    # divides by whole weeks - is the one part that gives way, and only it,
+    # when three-digit day counts would push the line past 80.
     newest = columns[-1]
     first_day = start + timedelta(days=7 * newest[0])
     span_days, elapsed = 7 * newest[1], (today - first_day).days + 1
@@ -1552,23 +1463,12 @@ def render_clock(grid, ink, g):
             glyph = cell_glyph(value, top, g)
             cells.append(ink.accent(glyph) if hour < 6 and value else glyph)
         lines.append(ink.dim(INDENT + day + "  ") + "".join(cells))
-    # Shade already has a key on this line; hue had none anywhere, on screen
-    # or in --help, while the accent was the one splash of color in the whole
-    # program and the first thing a stranger sees in the screenshot. It is
-    # printed only when color is actually being emitted: under --no-color,
-    # NO_COLOR, TERM=dumb or a pipe there is nothing teal on the page and a
-    # key to it would name a color the reader cannot see. Emitting color is
-    # necessary and not sufficient: only cells that hold commits are tinted,
-    # so a repo whose commits all land in daylight draws nothing teal on a
-    # tty either, and the key named a color that was not on the page. The
-    # `tinted` test is the same condition the loop above tints on.
-    #
-    # One wording, not a long one that shortens under pressure: the hours are
-    # written the way the ruler two rows up writes them, and a key that said
-    # "00:00-05:59" on a small repo and "00-05" on a large one would be the
-    # same fact in two shapes. It costs 15 cells, and this line runs to 65
-    # before it - so it fits unless one hour of one weekday holds a million
-    # commits, at which point the key drops rather than the line running wide.
+    # The key prints only when there is something teal on the page. Color
+    # being emitted is necessary and not sufficient: only cells that hold
+    # commits are tinted, so the `tinted` test has to be the same condition
+    # the loop above tints on. The hours are written the way the ruler two
+    # rows up writes them - one wording, not a shorter one under pressure -
+    # and the clause drops whole rather than the line running past 80.
     key = (INDENT + "one cell per hour of the week" + g["sep"]
            + "darkest = %s" % count(top, "commit"))
     clause = g["sep"] + "teal = 00-05"
@@ -1603,21 +1503,11 @@ def render_streaks(best, best_start, best_end, current, anchor, last_day,
     else:
         now = "current none, last commit %s" % last_day.isoformat()
     lines = [ink.dim(gutter("streaks")) + longest, INDENT + now]
-    # The disclosure belongs to this panel's own dates, not to the commit
-    # count. Gated on `clamped` alone it printed "these dates can pass
-    # <today>" on a repo whose every printed date was today or earlier -
-    # a future-dated commit outside every streak this panel reports is a
-    # fact tempo discloses and this panel has nothing to show for. So the
-    # test is whether a date actually on these two lines is after today,
-    # which is what makes "these dates" name something the reader can see.
-    #
-    # An attempt to point back at tempo instead - "the future date above is
-    # why a date here can be later than <today>" - was worse in three ways
-    # at once and was reverted: tempo prints a count and never a date, so
-    # "the future date above" named nothing findable; "today" stopped being
-    # on the panel at all, leaving a bare date; and it still fired when no
-    # date here was later than anything. The count stays here, where the
-    # sentence is self-contained.
+    # The test is whether a date actually on these two lines is after today,
+    # not whether the panel is clamped. Gated on `clamped` alone it printed
+    # "these dates can pass <today>" on a panel whose every printed date was
+    # today or earlier; a future-dated commit outside every streak reported
+    # here is tempo's disclosure to make, not this one's.
     shown = [d for d in (best_start, best_end,
                          anchor if current else last_day) if d is not None]
     if clamped and any(d > today for d in shown):
