@@ -1333,7 +1333,11 @@ def render_head(name, summary, g):
     if name == PROG:
         title = PROG
     else:
-        title = "%s  %s" % (PROG, fit(name, 60 - len(PROG) - 2))
+        # The separator's cost is cells, not characters: the glyph set
+        # chooses it and --ascii swaps it. PROG is fixed ASCII, so len() is
+        # the same number there.
+        room = 60 - len(PROG) - display_width(g["sep"])
+        title = "%s%s%s" % (PROG, g["sep"], fit(name, room))
     lines = [title, g["rule"] * max(60, display_width(summary))]
     return lines + [summary] if summary else lines
 
