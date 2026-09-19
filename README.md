@@ -8,7 +8,7 @@ Reads a git repository's history and draws a mood chart in your terminal: tempo,
 
 ## What it does
 
-One `git log` call becomes four panels: a sparkline of commits per week, a 7×24 punch card for every hour of the week, the longest and current daily streaks, and up to three mood tags. Every threshold tag it prints carries the number it measured and the line it crossed, so you can disagree with it. Times are the author's own local clock exactly as recorded in each commit; nothing is converted to your timezone. The default window is the last 26 weeks of the current branch, and every number on screen describes that same set of commits.
+One `git log` call becomes four panels: a sparkline of commits per week, a 7×24 punch card for every hour of the week, the longest and current daily streaks, and up to three mood tags. Every threshold tag it prints carries the number it measured and the line it crossed, so you can disagree with it. Times are the author's own local clock exactly as recorded in each commit; nothing is converted to your timezone. When color is on, the punch card tints the commits it holds in the 00:00–05:59 hours, and its caption says so when there are any to tint. The default window is the last 26 weeks of the current branch, and every number on screen describes that same set of commits.
 
 ## The tags
 
@@ -26,6 +26,8 @@ A tag about a window of the week has to clear more than the window's own size, o
 | `burst-driven` | ≥4 weeks with commits, and the busiest is ≥3× the median of those weeks | — |
 | `metronomic` | a window of ≥4 weeks, ≥60% of them with a commit, and the busiest <2× the median of the weeks that have one | — |
 | `unremarkable` | nothing above fired | — |
+
+`unremarkable` is the one tag with no arithmetic to show, because nothing crossed anything.
 
 Three things the numbers do not say:
 
@@ -56,11 +58,21 @@ python3 git_mood.py -- --weird-dir-name  # end the options; the rest is the path
 python3 git_mood.py --help
 ```
 
-Color is off when stdout is not a terminal. `--color` turns it back on, as do
-a non-empty `FORCE_COLOR` or `CLICOLOR_FORCE`. `--no-color` turns it off and
-beats everything, including `--color`; a non-empty `NO_COLOR` turns it off and
-beats the two force variables but not the flags. `git-mood --help` prints the
-whole order, which is the one that decides.
+Color is decided by the first of these that applies:
+
+```text
+  --no-color                       off
+  --color                          on
+  NO_COLOR, non-empty              off
+  FORCE_COLOR, non-empty           on
+  CLICOLOR_FORCE, non-empty        on
+  TERM=dumb                        off
+  stdout is not a terminal         off
+  none of the above                on
+
+"Non-empty" is the whole test on all three: any value counts, including 0
+and false, and a variable exported as "" counts as unset.
+```
 
 To use it as a git subcommand, put the directory on your `PATH`:
 

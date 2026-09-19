@@ -119,46 +119,12 @@ options:
   -h, --help        show this and exit; wins over -V if both are given
   -V, --version     show the version and exit
 
-Color is decided by the first of these that applies:
-
-  --no-color                       off
-  --color                          on
-  NO_COLOR, non-empty              off
-  FORCE_COLOR, non-empty           on
-  CLICOLOR_FORCE, non-empty        on
-  TERM=dumb                        off
-  stdout is not a terminal         off
-  none of the above                on
-
-"Non-empty" is the whole test on all three: any value counts, including 0
-and false, and a variable exported as "" counts as unset.
-
-Times are the author's own local clock, exactly as recorded in each commit.
-Nothing is converted to your timezone. When color is on, the punch card
-tints any commits it holds in the 00:00-05:59 hours; the caption says so
-when there are any to tint.
-
-"N authors" counts distinct author email addresses, lower-cased. --author
-matches the composed "Name <email>" instead, so the two can disagree.
-
-The layout is built for 80 columns; COLUMNS is not read and the layout
-does not adapt.
-
-The mood tags are nicknames for numbers, not psychology. Every threshold
-tag it prints carries the measured number and the line it crossed, so you
-can disagree with it. The three tags about a window of the week also
-print the share an evenly spread history would put in that window,
-because a line below that share would fire on no pattern at all.
-"unremarkable" is the one tag with no arithmetic to show, because
-nothing crossed anything. Tags are tested in a fixed order (on a tear,
-dormant, nocturnal, weekend-coded, nine-to-five, burst-driven,
-metronomic) and at most three print; when more fired than that, the mood
-line ends with "(+N more)" for the count it cut - bracketed, so it does
-not read as one more tag on a stream with no color. The cut tags are not
-named - a tag is only worth reading with its arithmetic under it, and
-there is room for three of those. Four of the seven rule each other out
-in pairs, so at most four ever fire and the one cut is always
-"burst-driven" or "metronomic".
+notes:
+  Times are each commit's own author clock; nothing is converted.
+  "N authors" counts distinct lower-cased author emails; --author matches
+  the composed "Name <email>", so the two can disagree.
+  Built for 80 columns; COLUMNS is not read and the layout does not adapt.
+  Color order and tag table: README.md at github.com/yinggarykairui/git-mood
 """
 
 # HELP is the one string that never goes through the --ascii ramp, so it
@@ -1316,7 +1282,7 @@ class Ink(object):
 
 
 def color_enabled(opts):
-    """First match wins, and --help prints this list in the same order.
+    """First match wins, and README.md prints this list in the same order.
 
     Every rule below is a statement someone made on purpose, ordered by how
     specific that someone was: this command line, then this environment,
