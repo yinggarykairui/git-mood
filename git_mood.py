@@ -342,6 +342,21 @@ def whole_escapes(text):
     return text[:kept]
 
 
+def marked(prefix):
+    """`prefix` with the "..." cut marker on it, and never a fourth dot.
+
+    Both trims below finish by joining a kept prefix to the marker, and a
+    prefix already ending in "." joined to it as `name....` - four dots,
+    which reads as a longer marker or as part of the name instead of as the
+    cut it is. The dots come off the prefix rather than the marker, so the
+    result is never longer than the prefix plus three and every budget
+    written against that sum still holds. A prefix that is nothing but dots
+    leaves the marker alone: three dots is shorter than the prefix was, so
+    it is still inside the limit, and there was no other text to keep.
+    """
+    return prefix.rstrip(".") + "..."
+
+
 def oneline(text, limit=60):
     """Errors are one line, so user data never breaks the format.
 
@@ -364,7 +379,7 @@ def oneline(text, limit=60):
         return flat
     if limit < 4:
         return whole_escapes(flat[:max(limit, 0)])
-    return whole_escapes(flat[:limit - 3]) + "..."
+    return marked(whole_escapes(flat[:limit - 3]))
 
 
 def display_width(text):
@@ -398,7 +413,7 @@ def fit(text, cells):
             cut = cut[:-1]
         cut = whole_escapes(cut)
         if cut:
-            return cut + tail
+            return marked(cut) if tail else cut
     return ""
 
 
