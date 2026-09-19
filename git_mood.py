@@ -527,6 +527,47 @@ def parse_weeks(raw, flag="--weeks"):
 SHORT_FLAGS = "ahV"          # short options that take no value
 SHORT_VALUED = "w"           # short options that take one
 
+# Every long option the scan accepts, spelled as the user types it. It is
+# one list in two places: an option added to the scan and not here is never
+# suggested, and one added here and not there is suggested and then
+# rejected.
+LONG_OPTIONS = ("--weeks", "--all", "--author", "--ascii", "--color",
+                "--no-color", "--help", "--version")
+
+
+def nearest_option(flag):
+    """The long option `flag` is a near miss for, or None.
+
+    difflib decides, at n=2 and cutoff=0.6, and this function does not
+    second-guess the ratio it computed - it only asks difflib for the same
+    two candidates' scores back, so there is one similarity rule here and
+    not two.
+
+    Two candidates tied at the top score get no answer. parse_args reports
+    rather than guesses, and naming one of two equally close options is a
+    guess; the reader still has --help, which is one line further down.
+
+    difflib is imported here and not at the top of the file. It pulls in
+    `re` for about 7 ms against a ~26 ms cold start, on a path almost no
+    run takes, and every module-level import widens the window in which a
+    Ctrl-C is answered by the interpreter instead of by this program.
+    """
+    import difflib
+    near = difflib.get_close_matches(flag, LONG_OPTIONS, 2, 0.6)
+    if not near:
+        return None
+    if len(near) == 2:
+        # get_close_matches compares each candidate as seq1 against the
+        # typed word as seq2; scoring them the other way round would be a
+        # different number from the one that ranked them.
+        scorer = difflib.SequenceMatcher(b=flag)
+        scorer.set_seq1(near[0])
+        best = scorer.ratio()
+        scorer.set_seq1(near[1])
+        if scorer.ratio() == best:
+            return None
+    return near[0]
+
 
 def short_option_problem(arg):
     """(message, kwargs) for a `-...` token no branch in the scan claimed.
@@ -646,6 +687,16 @@ def parse_args(argv):
             # exist. The docstring's "deliberately not split" stands: this
             # names the rule instead of guessing at the intent.
             message, extra = short_option_problem(arg)
+            # Long options only: short_option_problem() names the rule a
+            # cluster or an attached value broke, which beats the nearest
+            # single letter. `flag` is the token up to the "=", so
+            # `--wekes=4` scores as `--wekes` and the echo still shows the
+            # whole token.
+            if arg.startswith("--"):
+                near = nearest_option(flag)
+                if near:
+                    # Advice drops main()'s "; try: git-mood --help" tail.
+                    extra = dict(extra, advice="did you mean %s?" % near)
             raise Usage(message, **extra)
         elif path is None:
             path = arg
