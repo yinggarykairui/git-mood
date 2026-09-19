@@ -1328,7 +1328,12 @@ def render_head(name, summary, g):
     The name is cut to fit that 60, since a repo directory is free to be 120
     characters long and was hanging that far past its own rule.
     """
-    title = "%s  %s" % (PROG, fit(name, 60 - len(PROG) - 2))
+    # Exact match only: `git-mood-fork` and `Git-Mood` are other
+    # repositories, and the second token is the only thing naming them.
+    if name == PROG:
+        title = PROG
+    else:
+        title = "%s  %s" % (PROG, fit(name, 60 - len(PROG) - 2))
     lines = [title, g["rule"] * max(60, display_width(summary))]
     return lines + [summary] if summary else lines
 
