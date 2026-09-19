@@ -639,6 +639,10 @@ def parse_args(argv):
     color = "auto"
     i, only_paths = 0, False
     want, want_flag = None, None
+    # What --help and --version parse and throw away: keyed by option, so a
+    # flag written twice is named once, and valued by the spelling used
+    # first. Three keys, five possible values, nothing elastic.
+    discarded = {}
     while i < len(argv):
         arg = argv[i]
         i += 1
@@ -660,6 +664,7 @@ def parse_args(argv):
                 want, want_flag = "%s %s\n" % (PROG, VERSION), arg
         elif arg in ("-a", "--all"):
             whole = True
+            discarded.setdefault("all", arg)
         elif arg == "--ascii":
             ascii_ = True
         elif arg == "--no-color":
@@ -677,9 +682,13 @@ def parse_args(argv):
         elif flag in ("-w", "--weeks"):
             raw, i = take_value(flag, inline, argv, i)
             weeks = parse_weeks(raw, flag)
+            # `flag`, not `arg`: `--weeks=8` is the --weeks option, and the
+            # value is not what is being discarded.
+            discarded.setdefault("weeks", flag)
         elif flag == "--author":
             author, i = take_value(flag, inline, argv, i,
                                    "search for it as text")
+            discarded.setdefault("author", flag)
         elif arg.startswith("-") and arg != "-":
             # "unknown option" sent the reader hunting for a flag named
             # `aw`. Both shapes below are made of flags --help does list,
@@ -710,6 +719,20 @@ def parse_args(argv):
             # error.
             raise Usage("%s takes no path argument" % want_flag,
                         echo=path, tip=False)
+        if discarded:
+            # `git-mood --help --weeks 8` read the 8, dropped it and printed
+            # the help, saying nothing - a command line the program obeyed
+            # half of and reported none of. Only the three options that
+            # choose *what* to chart are discarded: --ascii, --color and
+            # --no-color say how to print, and the help is printed, so they
+            # are honoured. -V losing to -h is in --help itself.
+            #
+            # stderr, and before the help reaches stdout: stdout stays
+            # byte-identical to a plain --help for redirection and diffing,
+            # the exit code stays 0, and --help gains no line, which the
+            # same day's other item is busy removing.
+            write(sys.stderr, "%s: %s ignores %s\n"
+                  % (PROG, want_flag, ", ".join(discarded.values())), ascii_)
         emit(want)
         raise SystemExit(0)
     # `path or "."` collapsed two different command lines into one: no
