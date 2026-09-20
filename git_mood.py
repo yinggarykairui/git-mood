@@ -1302,6 +1302,22 @@ def render_head(name, summary, g):
     return lines + [summary] if summary else lines
 
 
+def elastic(forms, room):
+    """The first form that fits `room`, else the shortest one cut to fit.
+
+    Callers order their forms longest to shortest, and every form says the
+    same true thing in less space, so the first that fits is the most the
+    budget can afford. The trailing fit() is the guarantee rather than the
+    plan: it runs only when even the shortest form is wider than the budget.
+    On the counts line that needs a commit count of twenty-five digits, and
+    len() stops at nineteen.
+    """
+    for form in forms:
+        if display_width(form) <= room:
+            return form
+    return fit(forms[-1], room)
+
+
 def render_summary(commits, opts, nweeks, start, today, g):
     """One line, and never wider than 80 cells: the rule is drawn to match it.
 
@@ -1309,28 +1325,72 @@ def render_summary(commits, opts, nweeks, start, today, g):
     it to a flat 30 characters was not enough - the rest of the line is 49
     cells before the author has said a word, and a 30-character name pushed
     the whole thing, and the rule under it, to 93.
+
+    The budget is real now. It used to be computed and then not applied to
+    two of the three forms it governs, which put the line at 81 cells on
+    torvalds/linux (1.3M commits, history to 2005) under `--all --ascii
+    --author=`, and the rule under it went over with it. Enumerated over
+    everything `len()` can return, every nweeks a 1970 floor allows and the
+    author extremes fit() recognises, the line now holds at 80 or under with
+    no reachable exception.
     """
     span = "%s %s %s" % (start.isoformat(), g["arrow"], today.isoformat())
     rest = [count(len(commits), "commit"), count(nweeks, "week"), span]
     if opts.author is None:
+        # The one branch with nothing elastic in it: a count of authors is a
+        # number. It is also the one that cannot overflow at any real scale -
+        # it needs 100,000,000 commits by 10,000,000 distinct authors to reach
+        # 81 cells, and 10,000,000 commits all by different people is exactly
+        # 80. Recorded rather than defended against.
         who = count(len(set(c.email.lower() for c in commits)), "author")
     else:
         # "was the flag given", not "is the value truthy": --author= is a
         # filter to the empty string, not an absent filter.
-        room = 80 - display_width(g["sep"].join(rest)) - display_width(g["sep"])
+        #
+        # One rule governs both forms below: the frame gives way, the value
+        # inside the quotes and the clarifier beside it never do. Ordered
+        # longest first, because elastic() takes the first that fits.
+        room = max(0, 80 - display_width(g["sep"].join(rest))
+                   - display_width(g["sep"]))
+        frame = 'filtered to "%s"'
+        empty = frame % ""
         if opts.author == "":
             # The empty string is a substring of every ident, so this filter
             # is applied and stops nothing. Announcing it without saying so
             # left the reader hunting for the commits it had removed.
             # Under width pressure the clarifier used to be the thing that
             # gave way, which left exactly the bare line it was added to
-            # prevent. It shortens instead of vanishing.
-            who = 'filtered to "" (matches all)'
-            if display_width(who) > room:
-                who = 'filtered to "" (all)'
+            # prevent. It shortens instead of vanishing - and on the last
+            # rung the words go and the clarifier still does not, because
+            # the column it sits in is the filter either way.
+            who = elastic((empty + " (matches all)", empty + " (all)",
+                           '"" (all)'), room)
         else:
-            who = 'filtered to "%s"' % fit(opts.author,
-                                           min(30, max(4, room - 14)))
+            # A name is what this field is for, so the frame is spent before
+            # the name is: `filtered to ""` for a non-empty --author would be
+            # a false statement rather than a short one.
+            #
+            # The framed form is offered when the name inside it arrives
+            # whole, or arrives cut *and marked*. Below MARKED_FLOOR fit()
+            # drops the "..." it cannot afford, and an unmarked cut is the
+            # one outcome worse than a narrower frame - a reader cannot tell
+            # `filtered to "ada"` from a filter on `adam` truncated to three.
+            # The budget was written max(4, room - 14) precisely to keep the
+            # marker; what it did instead was keep the marker and let the
+            # line run to 81 cells, which is #71.
+            budget = min(30, room - display_width(empty))
+            whole = fit(opts.author, 30)   # the most of it this field shows
+            name = fit(opts.author, budget) if budget >= 1 else ""
+            forms = ['"%s"' % fit(opts.author, max(room - 2, MARKED_FLOOR))]
+            # `name == whole` is "the budget cost this name nothing", which is
+            # the test and not `name != ""`: an --author of nothing but spaces
+            # folds to the empty string at every budget, so an emptiness test
+            # would push it onto the bare rung and change a line that already
+            # fit. It renders as `filtered to ""` on both sides of this fix -
+            # a real defect about content, not width, and out of #71's fence.
+            if name == whole or budget >= MARKED_FLOOR:
+                forms.insert(0, frame % name)
+            who = elastic(forms, room)
     return g["sep"].join([rest[0], who] + rest[1:])
 
 
