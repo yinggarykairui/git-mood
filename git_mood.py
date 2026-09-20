@@ -46,8 +46,8 @@ def interrupted(_signum, _frame):
 # left in place runs a Python frame at an arbitrary bytecode boundary, and
 # one landing inside subprocess.Popen can leave `_waitpid_lock` held by the
 # thread that then blocks on it - a wedge with no exit at all. This covers
-# the import window only; EXIT_INTERRUPT above states the bounds, and
-# LESSONS.md at 2026-09-17 holds the measurements.
+# the import window only; EXIT_INTERRUPT above states its bounds, and the
+# measurements are in the factory hub the README's footer links.
 if __name__ == "__main__":
     try:
         signal.signal(signal.SIGINT, interrupted)
@@ -448,10 +448,9 @@ def parse_weeks(raw, flag="--weeks"):
 SHORT_FLAGS = "ahV"          # short options that take no value
 SHORT_VALUED = "w"           # short options that take one
 
-# Every long option the scan accepts, spelled as the user types it. It is
-# one list in two places: an option added to the scan and not here is never
-# suggested, and one added here and not there is suggested and then
-# rejected.
+# Every long option the scan accepts, spelled as typed. One list in two
+# places: either half without the other is never suggested, or suggested
+# and then rejected.
 LONG_OPTIONS = ("--weeks", "--all", "--author", "--ascii", "--color",
                 "--no-color", "--help", "--version")
 
@@ -489,8 +488,8 @@ def nearest_option(flag):
     if not near:
         return None
     if len(near) == 2:
-        # Scored the way get_close_matches scored them: candidate as seq1,
-        # the typed word as seq2. The other order is a different number.
+        # Scored as get_close_matches scored them - candidate seq1, typed
+        # seq2. The other order is a different number.
         scorer = difflib.SequenceMatcher(b=flag[2:])
         scorer.set_seq1(near[0])
         best = scorer.ratio()
@@ -570,9 +569,8 @@ def parse_args(argv):
     color = "auto"
     i, only_paths = 0, False
     want, want_flag = None, None
-    # What --help and --version parse and throw away: keyed by option, so a
-    # flag written twice is named once, and valued by the spelling used
-    # first. Three keys, five possible values, nothing elastic.
+    # Parsed and thrown away, keyed by option and valued by the first
+    # spelling: a flag written twice is named once. Nothing here is elastic.
     discarded = {}
     while i < len(argv):
         arg = argv[i]
@@ -613,8 +611,7 @@ def parse_args(argv):
         elif flag in ("-w", "--weeks"):
             raw, i = take_value(flag, inline, argv, i)
             weeks = parse_weeks(raw, flag)
-            # `flag`, not `arg`: `--weeks=8` is the --weeks option, and the
-            # value is not what is being discarded.
+            # `flag`, not `arg`: `--weeks=8` discards the option, not the 8.
             discarded.setdefault("weeks", flag)
         elif flag == "--author":
             author, i = take_value(flag, inline, argv, i,
@@ -627,11 +624,9 @@ def parse_args(argv):
             # exist. The docstring's "deliberately not split" stands: this
             # names the rule instead of guessing at the intent.
             message, extra = short_option_problem(arg)
-            # Long options only: short_option_problem() names the rule a
-            # cluster or an attached value broke, which beats the nearest
-            # single letter. `flag` is the token up to the "=", so
-            # `--wekes=4` scores as `--wekes` and the echo still shows the
-            # whole token.
+            # Long options only - short_option_problem() names the rule a
+            # cluster broke, which beats the nearest single letter. `flag`
+            # stops at the "=", so `--wekes=4` scores as `--wekes`.
             if arg.startswith("--"):
                 near = nearest_option(flag)
                 if near:
@@ -651,17 +646,10 @@ def parse_args(argv):
             raise Usage("%s takes no path argument" % want_flag,
                         echo=path, tip=False)
         if discarded:
-            # `git-mood --help --weeks 8` read the 8, dropped it and printed
-            # the help, saying nothing - a command line the program obeyed
-            # half of and reported none of. Only the three options that
-            # choose *what* to chart are discarded: --ascii, --color and
-            # --no-color say how to print, and the help is printed, so they
-            # are honoured. -V losing to -h is in --help itself.
-            #
-            # stderr, and before the help reaches stdout: stdout stays
-            # byte-identical to a plain --help for redirection and diffing,
-            # the exit code stays 0, and --help gains no line, which the
-            # same day's other item is busy removing.
+            # Only the options that choose *what* to chart are discarded:
+            # --ascii, --color and --no-color say how, and the help is
+            # printed, so they are honoured. stderr, so stdout stays
+            # byte-identical to a plain --help and the exit code stays 0.
             write(sys.stderr, "%s: %s ignores %s\n"
                   % (PROG, want_flag, ", ".join(discarded.values())), ascii_)
         emit(want)
@@ -1299,14 +1287,14 @@ def render_head(name, summary, g):
     The name is cut to fit that 60, since a repo directory is free to be 120
     characters long and was hanging that far past its own rule.
     """
-    # Exact match only: `git-mood-fork` and `Git-Mood` are other
-    # repositories, and the second token is the only thing naming them.
+    # Exact match only: `git-mood-fork` and `Git-Mood` are other repos,
+    # and the second token is the only thing naming them.
     if name == PROG:
         title = PROG
     else:
-        # The separator's cost is cells, not characters: the glyph set
-        # chooses it and --ascii swaps it. PROG is fixed ASCII, so len() is
-        # the same number there.
+        # The separator's cost is cells, not characters - the glyph set
+        # chooses it and --ascii swaps it. PROG is fixed ASCII, so len()
+        # is the same number there.
         room = 60 - len(PROG) - display_width(g["sep"])
         title = "%s%s%s" % (PROG, g["sep"], fit(name, room))
     lines = [title, g["rule"] * max(60, display_width(summary))]
@@ -1477,8 +1465,10 @@ def render_clock(grid, ink, g):
     # being emitted is necessary and not sufficient: only cells that hold
     # commits are tinted, so the `tinted` test has to be the same condition
     # the loop above tints on. The hours are written the way the ruler two
-    # rows up writes them - one wording, not a shorter one under pressure -
-    # and the clause drops whole rather than the line running past 80.
+    # rows up writes them - one wording, not a shorter one under pressure.
+    # The clause costs 15 cells in both glyph sets and drops whole rather
+    # than the line running past 80; the key it hangs off has no constant
+    # width, growing with the digits in the count.
     key = (INDENT + "one cell per hour of the week" + g["sep"]
            + "darkest = %s" % count(top, "commit"))
     clause = g["sep"] + "teal = 00-05"
