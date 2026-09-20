@@ -304,7 +304,9 @@ def oneline(text, limit=60):
 
 # Below four cells fit() stops paying for its "..." and cuts silently, so a
 # budget under this floor buys a *wrong* string rather than a short one.
-# fit() and every caller that sizes a budget for it read this one number.
+# fit() reads it, and so does render_summary, which is the caller that has
+# to size a budget down to nothing. render_head's budget starts at 46 and
+# never approaches this, so it does not.
 MARKED_FLOOR = 4
 
 
@@ -1330,16 +1332,13 @@ def render_summary(commits, opts, nweeks, start, today, g):
     cells before the author has said a word, and a 30-character name pushed
     the whole thing, and the rule under it, to 93.
 
-    **With `--author`, 80 cells is a bound.** It was not before: the budget
-    was computed and then not checked against two of the three forms it
-    governs, which put the line at 81 on torvalds/linux under
-    `--all --ascii --author=`. Enumerated over everything len() can return,
-    every nweeks a 1970 floor allows and the author extremes fit()
-    recognises, nothing now exceeds 80 and every line that already fit is
-    unchanged.
+    With `--author`, 80 cells is a bound. It was not before: the budget was
+    computed and then not checked against two of the three forms it governs,
+    which put the line at 81 on torvalds/linux under `--all --ascii
+    --author=`.
 
-    **Without it, 80 cells is a description.** The unfiltered form is a
-    count of authors, with nothing elastic to give way, and it passes 80 at
+    Without it, 80 cells is a description. The unfiltered form is a count of
+    authors, with nothing elastic to give way, and it passes 80 at
     100,000,000 commits by 10,000,000 distinct authors. Ten million commits
     all by different people is exactly 80. Out of reach, and stated rather
     than guarded, so this docstring does not claim a bound the branch below
@@ -1371,9 +1370,14 @@ def render_summary(commits, opts, nweeks, start, today, g):
             # Four rungs, two choices: keep the frame or drop it, spell the
             # clarifier out or shorten it. With the frame gone the clarifier
             # is the only thing naming what the field is, which is why the
-            # third rung spends the frame and takes the long form back. The
-            # frame lasts to a million commits and the third rung to a
-            # billion; the fourth is for nothing that exists.
+            # third rung spends the frame and takes the long form back.
+            #
+            # Worst case - --ascii, which costs a cell for the arrow, with a
+            # window past a thousand weeks - the frame lasts to a million
+            # commits and the third rung to a billion. Anything narrower
+            # holds each rung longer: at the default 26-week window the
+            # frame reaches a billion. The fourth rung is for nothing that
+            # exists either way.
             who = elastic((empty + " (matches all)", empty + " (all)",
                            '"" (matches all)', '"" (all)'), room)
         else:
