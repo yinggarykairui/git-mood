@@ -464,6 +464,16 @@ def nearest_option(flag):
     two candidates' scores back, so there is one similarity rule here and
     not two.
 
+    The leading `--` is dropped before scoring, on both sides. It is two
+    characters every candidate shares with every typed flag - the call
+    site only reaches here for a token that starts with one - so leaving
+    it in pays a ratio that has nothing to do with the word: `--since`
+    scored 0.625 against `--version` and `--days` 0.615 against `--ascii`,
+    and both were offered - a confident wrong answer, in place of the
+    `; try: git-mood --help` tail that advice replaces. On the stems both
+    fall under the cutoff and the tail comes back, while every real
+    misspelling still lands.
+
     Two candidates tied at the top score get no answer. parse_args reports
     rather than guesses, and naming one of two equally close options is a
     guess; the reader still has --help, which is one line further down.
@@ -474,20 +484,20 @@ def nearest_option(flag):
     Ctrl-C is answered by the interpreter instead of by this program.
     """
     import difflib
-    near = difflib.get_close_matches(flag, LONG_OPTIONS, 2, 0.6)
+    stems = [option[2:] for option in LONG_OPTIONS]
+    near = difflib.get_close_matches(flag[2:], stems, 2, 0.6)
     if not near:
         return None
     if len(near) == 2:
-        # get_close_matches compares each candidate as seq1 against the
-        # typed word as seq2; scoring them the other way round would be a
-        # different number from the one that ranked them.
-        scorer = difflib.SequenceMatcher(b=flag)
+        # Scored the way get_close_matches scored them: candidate as seq1,
+        # the typed word as seq2. The other order is a different number.
+        scorer = difflib.SequenceMatcher(b=flag[2:])
         scorer.set_seq1(near[0])
         best = scorer.ratio()
         scorer.set_seq1(near[1])
         if scorer.ratio() == best:
             return None
-    return near[0]
+    return LONG_OPTIONS[stems.index(near[0])]
 
 
 def short_option_problem(arg):
