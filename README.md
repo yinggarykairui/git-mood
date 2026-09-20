@@ -33,7 +33,7 @@ Three things the numbers do not say:
 
 - **The newest column is short.** It runs to today, so it is short of its full span unless today is a Sunday. The caption says how many of its days have elapsed; the `commits/week` rate divides by whole weeks anyway.
 - **`N authors` counts addresses.** Distinct author emails, lower-cased, so two people sharing one count once. `--author` matches the composed `Name <email>` instead.
-- **The width is fixed.** The layout is built for 80 columns; `COLUMNS` is not read and nothing adapts to your terminal. The header rule grows from 60 toward that 80 only to cover its own contents. On the counts line the filter text is the one elastic field: it is shortened, and then the words around it are dropped, to keep that line inside the 80.
+- **The width is fixed.** The layout is built for 80 columns; `COLUMNS` is not read and nothing adapts to your terminal. The header rule grows from 60 toward that 80 only to cover its own contents. On the counts line the `--author` filter text is the one elastic field: it has shorter forms, and a history wide enough to need one gets one instead of a line past 80.
 
 ## How to run
 
