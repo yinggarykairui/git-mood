@@ -45,8 +45,8 @@ def interrupted(_signum, _frame):
 # main() hands the signal back as its first act, because a Python handler
 # left in place runs a Python frame at an arbitrary bytecode boundary, and
 # one landing inside subprocess.Popen can leave `_waitpid_lock` held by the
-# thread that then blocks on it - a wedge with no exit at all. This covers
-# the import window only; EXIT_INTERRUPT above states its bounds, and the
+# thread that then blocks on it - a wedge with no exit at all. It covers
+# the import window only, whose bounds EXIT_INTERRUPT above states; the
 # measurements are in the factory hub the README's footer links.
 if __name__ == "__main__":
     try:
@@ -118,10 +118,9 @@ GLYPHS = {
     "dash": "—",
 }
 ASCII_GLYPHS = {
-    # The ramp climbs: the dot is the empty week - the same low-ink mark the
-    # punch card uses for an empty cell - and the baseline stroke is the
-    # shortest bar. Those two the other way round draw the picture upside
-    # down. Above the first step the order is convention, not measured ink.
+    # The ramp climbs: the dot is the empty week - the same low-ink mark
+    # the punch card uses for an empty cell - and the baseline stroke is
+    # the shortest bar. The other way round draws the picture upside down.
     #
     # This string must stay exactly as long as GLYPHS["spark"]. ramp_glyph()
     # picks a step by index, so a different length would have --ascii and
@@ -449,8 +448,8 @@ SHORT_FLAGS = "ahV"          # short options that take no value
 SHORT_VALUED = "w"           # short options that take one
 
 # Every long option the scan accepts, spelled as typed. One list in two
-# places: an option in the scan and not here is never suggested; one here
-# and not in the scan is suggested and then rejected.
+# places: in the scan and not here is never suggested, here and not in the
+# scan is suggested and then rejected.
 LONG_OPTIONS = ("--weeks", "--all", "--author", "--ascii", "--color",
                 "--no-color", "--help", "--version")
 
@@ -513,9 +512,8 @@ def short_option_problem(arg):
     if all(ch in SHORT_FLAGS + SHORT_VALUED for ch in body):
         # The advice is a command line, so it has to be one that works.
         # `-wa` split left to right is `-w -a`, and `-w` then eats the flag
-        # and refuses it - the "advice that does not work is worse than
-        # none" the take_value() docstring rules out. The valued options go
-        # last instead, each shown with the value it needs.
+        # and refuses it. The valued options go last instead, each shown
+        # with the value it needs.
         rewrite = " ".join(["-" + ch for ch in body if ch in SHORT_FLAGS]
                            + ["-%s N" % ch for ch in body
                               if ch in SHORT_VALUED])
@@ -651,9 +649,8 @@ def parse_args(argv):
             raise Usage("%s takes no path argument" % want_flag,
                         echo=path, tip=False)
         if discarded:
-            # Only the options that choose *what* to chart are discarded:
-            # --ascii, --color and --no-color say how, and the help is
-            # printed, so they are honoured. stderr, so stdout stays
+            # Only the options that choose *what* to chart are discarded;
+            # parse_args' docstring says why. stderr, so stdout stays
             # byte-identical to a plain --help and the exit code stays 0.
             write(sys.stderr, "%s: %s ignores %s\n"
                   % (PROG, want_flag, ", ".join(discarded.values())), ascii_)
@@ -1129,11 +1126,9 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
          % current),
         (idle >= 21, "dormant", "%s (line: 21 days)" % quiet),
         # Each of these three lines has to sit above the share an evenly
-        # spread history already puts in its own window, or the tag fires on
-        # the *absence* of a pattern: 6 of 24 hours is 25% of an even day,
-        # 2 of 7 days 28.6% of an even week, 45 of 168 hours 26.8%. And each
-        # prints that baseline beside its line, because the line alone does
-        # not say which of the two the reader is looking at.
+        # spread history already puts in its own window - the `baseline`
+        # each one prints - or the tag fires on the *absence* of a pattern.
+        # The line alone does not say which of the two is being read.
         (night >= 50, "nocturnal",
          "%d%% of commits land between 00:00 and 05:59 "
          "(line: 50%%, baseline: %d%%)" % (pct(night), night_baseline)),
@@ -1155,24 +1150,19 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
          "the busiest week holds %sx the median busy week (line: 3x)"
          % floor1(ratio)),
         # This line is at its limit: 76 columns worst case, nothing on it
-        # elastic, and it is the only line in the program that has ever
-        # passed 80. "the median busy week" names the same denominator
-        # burst-driven uses two rows up and has to keep naming it; paying
-        # for that cost the window count, which render_summary prints on the
-        # header in every mode. "lines" plural and "<2x" stay in that shape
-        # for the same four columns.
+        # elastic. "the median busy week" names the same denominator
+        # burst-driven uses two rows up and has to keep naming it; "lines"
+        # plural and "<2x" stay in that shape for the same four columns.
         (nweeks >= 4 and covered >= 60 and ratio < 2.0, "metronomic",
          "%d%% of weeks busy, peak %sx the median busy week "
          "(lines: 60%%, <2x)" % (pct(covered), floor1(ratio))),
     ]
     fired = [(tag, line) for ok, tag, line in candidates if ok]
-    # `cut` is however many the three-tag cap dropped, and four exclusions
-    # among the seven candidates hold it to 0 or 1: "on a tear" against
-    # "dormant", "nine-to-five" against "nocturnal" and against
-    # "weekend-coded" (60 + 50 and 60 + 57 both pass 100), "burst-driven"
-    # against "metronomic". It is still written for an N it cannot reach,
-    # because those exclusions are properties of the thresholds above, and a
-    # threshold is exactly the thing this file changes.
+    # `cut` is what the three-tag cap dropped. Four exclusions hold it to
+    # 0 or 1 - tear/dormant, nine-to-five against nocturnal and against
+    # weekend-coded (60 + 50 and 60 + 57 both pass 100), burst-driven
+    # against metronomic - but it is still written for an N it cannot
+    # reach, because those are properties of thresholds this file changes.
     cut = max(0, len(fired) - 3)
     tags = [tag for tag, _ in fired[:3]]
     evidence = [line for _, line in fired[:3]]
@@ -1292,14 +1282,12 @@ def render_head(name, summary, g):
     The name is cut to fit that 60, since a repo directory is free to be 120
     characters long and was hanging that far past its own rule.
     """
-    # Exact match only: `git-mood-fork` and `Git-Mood` are other repos,
-    # and the second token is the only thing naming them.
+    # Exact match only: `git-mood-fork` and `Git-Mood` are other repos.
     if name == PROG:
         title = PROG
     else:
-        # The separator's cost is cells, not characters - the glyph set
-        # chooses it and --ascii swaps it. PROG is fixed ASCII, so len()
-        # is the same number there.
+        # The separator's cost is cells, not characters; --ascii swaps it.
+        # PROG is fixed ASCII, so len() is the same number there.
         room = 60 - len(PROG) - display_width(g["sep"])
         title = "%s%s%s" % (PROG, g["sep"], fit(name, room))
     lines = [title, g["rule"] * max(60, display_width(summary))]
@@ -1469,11 +1457,10 @@ def render_clock(grid, ink, g):
     # The key prints only when there is something teal on the page. Color
     # being emitted is necessary and not sufficient: only cells that hold
     # commits are tinted, so the `tinted` test has to be the same condition
-    # the loop above tints on. The hours are written the way the ruler two
-    # rows up writes them - one wording, not a shorter one under pressure.
-    # The clause costs 15 cells in both glyph sets and drops whole rather
-    # than the line running past 80; the key it hangs off has no constant
-    # width, growing with the digits in the count.
+    # the loop above tints on. The hours keep the ruler's own wording, not
+    # a shorter one under pressure. The clause costs 15 cells in both glyph
+    # sets and drops whole rather than the line running past 80; the key it
+    # hangs off is no constant width - it grows with the count's digits.
     key = (INDENT + "one cell per hour of the week" + g["sep"]
            + "darkest = %s" % count(top, "commit"))
     clause = g["sep"] + "teal = 00-05"
