@@ -69,10 +69,10 @@ Color is decided by the first of these that applies:
   TERM=dumb                        off
   stdout is not a terminal         off
   none of the above                on
+```
 
 "Non-empty" is the whole test on all three: any value counts, including 0
 and false, and a variable exported as "" counts as unset.
-```
 
 To use it as a git subcommand, put the directory on your `PATH`:
 

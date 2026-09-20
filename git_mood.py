@@ -92,7 +92,7 @@ notes:
   "N authors" counts distinct lower-cased author emails; --author matches
   the composed "Name <email>", so the two can disagree.
   Built for 80 columns; COLUMNS is not read and the layout does not adapt.
-  Color order and tag table: README.md at github.com/yinggarykairui/git-mood
+  Color order and tag table: https://github.com/yinggarykairui/git-mood#readme
 """
 
 # HELP is the one string that never goes through the --ascii ramp, so it
