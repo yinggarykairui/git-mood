@@ -303,10 +303,8 @@ def oneline(text, limit=60):
 
 
 # Below four cells fit() stops paying for its "..." and cuts silently, so a
-# budget under this floor buys a *wrong* string rather than a short one. Both
-# fit() and the callers that size a budget for it read this one number; they
-# used to carry a 4 each, one of them spelled max(4, ...), and the renderer's
-# copy was the overhang #71 was filed for.
+# budget under this floor buys a *wrong* string rather than a short one.
+# fit() and every caller that sizes a budget for it read this one number.
 MARKED_FLOOR = 4
 
 
@@ -1303,16 +1301,19 @@ def render_head(name, summary, g):
 
 
 def elastic(forms, room):
-    """The first form that fits `room`, else the shortest one cut to fit.
+    """The first form that fits `room`, else the last one cut to fit.
 
-    Callers order their forms longest to shortest, and every form says the
-    same true thing in less space, so the first that fits is the most the
-    budget can afford. The trailing fit() is the floor and not the plan: it
-    runs only when even the shortest form is wider than the budget, and what
-    it returns is a cut string rather than a shorter sentence. On the counts
-    line it starts at a thousand million million commits - inside what len()
-    allows and a long way outside any repository, which is why this is a
-    floor and not an assertion.
+    `forms` is in the caller's order of preference, not in width order: the
+    first that fits wins, so a later form may be wider than an earlier one
+    and simply never be reached. What every form must share is the truth it
+    states; what they trade is how much of it they say.
+
+    The trailing fit() is a floor, not a plan. It returns a cut string
+    rather than a shorter sentence, and it runs only when even the last
+    form is wider than the budget - on the counts line, from a thousand
+    million million commits, which len() permits and no repository will
+    reach. It is a floor rather than an assertion because a renderer that
+    raises is worse than one that prints something short.
     """
     for form in forms:
         if display_width(form) <= room:
@@ -1321,38 +1322,42 @@ def elastic(forms, room):
 
 
 def render_summary(commits, opts, nweeks, start, today, g):
-    """One line, and never wider than 80 cells: the rule is drawn to match it.
+    """One line; the rule under it is drawn to match, so width is the whole
+    concern here.
 
     Only the filter text is elastic, so it is the one that gives way. Cutting
     it to a flat 30 characters was not enough - the rest of the line is 49
     cells before the author has said a word, and a 30-character name pushed
     the whole thing, and the rule under it, to 93.
 
-    The budget is applied now. It used to be computed and then not checked
-    against two of the forms it governs, which put the line at 81 cells on
-    torvalds/linux (1.3M commits, history to 2005) under `--all --ascii
-    --author=`, and the rule under it went over with it. Enumerated over
-    everything `len()` can return, every nweeks a 1970 floor allows and the
-    author extremes fit() recognises: nothing exceeds 80, and every line
-    that already fit is unchanged.
+    **With `--author`, 80 cells is a bound.** It was not before: the budget
+    was computed and then not checked against two of the three forms it
+    governs, which put the line at 81 on torvalds/linux under
+    `--all --ascii --author=`. Enumerated over everything len() can return,
+    every nweeks a 1970 floor allows and the author extremes fit()
+    recognises, nothing now exceeds 80 and every line that already fit is
+    unchanged.
+
+    **Without it, 80 cells is a description.** The unfiltered form is a
+    count of authors, with nothing elastic to give way, and it passes 80 at
+    100,000,000 commits by 10,000,000 distinct authors. Ten million commits
+    all by different people is exactly 80. Out of reach, and stated rather
+    than guarded, so this docstring does not claim a bound the branch below
+    does not hold.
     """
     span = "%s %s %s" % (start.isoformat(), g["arrow"], today.isoformat())
     rest = [count(len(commits), "commit"), count(nweeks, "week"), span]
     if opts.author is None:
-        # The one branch with nothing elastic in it: a count of authors is a
-        # number. It is also the one that cannot overflow at any real scale -
-        # 100,000,000 commits by 10,000,000 distinct authors reaches 81 cells,
-        # and 10,000,000 commits all by different people is exactly 80.
-        # Recorded rather than defended against.
+        # Nothing elastic here: a count of authors is a number. See the
+        # docstring for the scale at which that stops fitting.
         who = count(len(set(c.email.lower() for c in commits)), "author")
     else:
         # "was the flag given", not "is the value truthy": --author= is a
         # filter to the empty string, not an absent filter.
         #
-        # Each ladder below is ordered longest first and elastic() takes the
-        # first rung that fits. Every rung is the rung above it with words
-        # removed, so a narrower budget can cost the reader detail and cannot
-        # cost them a true statement.
+        # Each ladder below is in preference order and elastic() takes the
+        # first rung that fits. Every rung states the same true thing; what
+        # a narrower budget costs the reader is detail.
         room = max(0, 80 - display_width(g["sep"].join(rest))
                    - display_width(g["sep"]))
         frame = 'filtered to "%s"'
@@ -1360,26 +1365,30 @@ def render_summary(commits, opts, nweeks, start, today, g):
         if opts.author == "":
             # The empty string is a substring of every ident, so this filter
             # is applied and stops nothing. Announcing it without saying so
-            # left the reader hunting for the commits it had removed. Under
-            # width pressure the clarifier used to be the thing that gave
-            # way, which left exactly the bare line it was added to prevent;
-            # what gives way now is the words in front of it. The third rung
-            # is what keeps the fourth off anything real: the full frame
-            # lasts to a million commits, the third to a billion, and only
-            # past that does the field come down to the pair and the
-            # parenthesis.
+            # left the reader hunting for the commits it had removed, so the
+            # clarifier is the one thing on this ladder that is never spent.
+            #
+            # Four rungs, two choices: keep the frame or drop it, spell the
+            # clarifier out or shorten it. With the frame gone the clarifier
+            # is the only thing naming what the field is, which is why the
+            # third rung spends the frame and takes the long form back. The
+            # frame lasts to a million commits and the third rung to a
+            # billion; the fourth is for nothing that exists.
             who = elastic((empty + " (matches all)", empty + " (all)",
-                           'filtered "" (all)', '"" (all)'), room)
+                           '"" (matches all)', '"" (all)'), room)
         else:
-            # The first rung is the form this branch has always produced -
-            # the name cut to whatever is left after the frame, floored at
-            # MARKED_FLOOR so fit() can still afford the "..." that says it
-            # cut. What was missing is the last step: that form was returned
-            # without ever being measured against the budget it was sized
-            # from, and at eighteen cells into a budget of seventeen it took
-            # the line to 81 (#71). It is a rung like any other now, and when
-            # it does not fit the frame is what goes - which also hands the
-            # name the twelve cells the frame was holding.
+            # Rung one is the form this branch has always produced: the name
+            # cut to what the frame leaves, floored at MARKED_FLOOR so fit()
+            # can still afford the "..." that says it cut. Unmeasured against
+            # its own budget, that floor put eighteen cells into seventeen
+            # and the line at 81 (#71). Measuring it is the whole fix, and
+            # keeping it first is why no line that fit before has moved.
+            #
+            # Rung two hands the name the twelve cells the frame was holding,
+            # so it can show more of the name than rung one - which makes
+            # this ladder the one place where a cell less of budget buys the
+            # reader more. It takes a hundred million commits to see, and
+            # the alternative was moving lines that were never broken.
             forms = (frame % fit(opts.author,
                                  min(30, max(MARKED_FLOOR,
                                              room - display_width(empty)))),
