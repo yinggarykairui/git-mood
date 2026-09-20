@@ -449,8 +449,8 @@ SHORT_FLAGS = "ahV"          # short options that take no value
 SHORT_VALUED = "w"           # short options that take one
 
 # Every long option the scan accepts, spelled as typed. One list in two
-# places: either half without the other is never suggested, or suggested
-# and then rejected.
+# places: an option in the scan and not here is never suggested; one here
+# and not in the scan is suggested and then rejected.
 LONG_OPTIONS = ("--weeks", "--all", "--author", "--ascii", "--color",
                 "--no-color", "--help", "--version")
 
@@ -624,12 +624,17 @@ def parse_args(argv):
             # exist. The docstring's "deliberately not split" stands: this
             # names the rule instead of guessing at the intent.
             message, extra = short_option_problem(arg)
-            # Long options only - short_option_problem() names the rule a
-            # cluster broke, which beats the nearest single letter. `flag`
-            # stops at the "=", so `--wekes=4` scores as `--wekes`.
+            # Long options only: short_option_problem() names the rule a
+            # cluster or an attached value broke, which beats the nearest
+            # single letter. `flag` stops at the "=", so `--wekes=4` scores
+            # as `--wekes` while the echo still shows the whole token.
+            #
+            # `near != flag` because `--ascii=1` scores 1.0 against --ascii:
+            # the nearest option is the one already typed, and offering it
+            # is a no-op that evicts the "; try: git-mood --help" tail.
             if arg.startswith("--"):
                 near = nearest_option(flag)
-                if near:
+                if near and near != flag:
                     # Advice drops main()'s "; try: git-mood --help" tail.
                     extra = dict(extra, advice="did you mean %s?" % near)
             raise Usage(message, **extra)
