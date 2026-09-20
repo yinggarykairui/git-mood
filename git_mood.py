@@ -302,6 +302,14 @@ def oneline(text, limit=60):
     return marked(whole_escapes(flat[:limit - 3]))
 
 
+# Below four cells fit() stops paying for its "..." and cuts silently, so a
+# budget under this floor buys a *wrong* string rather than a short one. Both
+# fit() and the callers that size a budget for it read this one number; they
+# used to carry a 4 each, one of them spelled max(4, ...), and the renderer's
+# copy was the overhang #71 was filed for.
+MARKED_FLOOR = 4
+
+
 def display_width(text):
     """Terminal cells, not codepoints. A rule sized in codepoints came up
     short under any name holding wide characters: five party poppers are five
@@ -326,7 +334,7 @@ def fit(text, cells):
     flat = oneline(text, cells)
     if display_width(flat) <= cells:
         return flat
-    for tail in ("..." if cells >= 4 else "", ""):
+    for tail in ("..." if cells >= MARKED_FLOOR else "", ""):
         room = cells - len(tail)
         cut = flat
         while cut and display_width(cut) > room:
