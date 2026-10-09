@@ -1086,6 +1086,7 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
     weekend = share(sum(1 for c in commits if c.weekday >= 5), total)
     office = share(sum(1 for c in commits
                        if c.weekday < 5 and 9 <= c.hour < 18), total)
+    evening = share(sum(1 for c in commits if 18 <= c.hour < 24), total)
 
     # What an evenly spread history would already put in each window: the
     # number every window tag's line has to beat to mean anything. It is a
@@ -1093,10 +1094,24 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
     # window's own size through the same share()/pct() pair the measurements
     # go through - a printed "baseline" cannot drift from the hours it counts.
     night_baseline = pct(share(6, 24))            # 6 of 24 hours -> 25.0
+    evening_baseline = pct(share(6, 24))          # 6 of 24 hours -> 25.0
     weekend_baseline = pct(share(2, 7))           # 2 of 7 days   -> 28.6
     office_baseline = pct(share(9 * 5, 24 * 7))   # 45 of 168 h   -> 26.8
     covered = share(len(nonempty), nweeks)
     idle = (today - last_day).days
+
+    # A window tag states a distribution, and a distribution over too few
+    # commits is noise: at n=2, "nocturnal" (>=50% before 06:00) fires 44% of
+    # the time on commits scattered at random - above the 25% baseline it
+    # prints beside itself. burst-driven and metronomic already gate on >=4
+    # weeks; the four hour/day window tags gated on nothing and fired on any
+    # quiet repo through `--weeks 1`. They now need a minimum commit count,
+    # set where each one's false-positive rate under the even-spread null
+    # stays below 1% for every n at or above it. The binding pair are the two
+    # 50%-line tags, nocturnal and after-hours (p=0.25): 21. weekend-coded (16)
+    # and nine-to-five (12) reach 1% sooner and sit safely inside one gate.
+    WINDOW_MIN = 21
+    enough = total >= WINDOW_MIN
 
     # `last_day` is the newest commit that is not in the future, so when
     # `ahead` commits are dated later this gap was measured from an older
@@ -1133,17 +1148,24 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
          "%d days in a row with at least one commit (line: 5 days)"
          % current),
         (idle >= 21, "dormant", "%s (line: 21 days)" % quiet),
-        # Each of these three lines has to sit above the share an evenly
+        # Each of these four lines has to sit above the share an evenly
         # spread history already puts in its own window - the `baseline`
         # each one prints - or the tag fires on the *absence* of a pattern.
-        # The line alone does not say which of the two is being read.
-        (night >= 50, "nocturnal",
+        # The line alone does not say which of the two is being read. All
+        # four also carry the `enough` guard above: below WINDOW_MIN commits
+        # the share is noise, whichever side of the line it lands. nocturnal
+        # and after-hours read disjoint 6-hour windows, so at most one of the
+        # two can clear 50%; nine-to-five is disjoint from both.
+        (enough and night >= 50, "nocturnal",
          "%d%% of commits land between 00:00 and 05:59 "
          "(line: 50%%, baseline: %d%%)" % (pct(night), night_baseline)),
-        (weekend >= 57, "weekend-coded",
+        (enough and evening >= 50, "after-hours",
+         "%d%% of commits land between 18:00 and 23:59 "
+         "(line: 50%%, baseline: %d%%)" % (pct(evening), evening_baseline)),
+        (enough and weekend >= 57, "weekend-coded",
          "%d%% of commits land on a Saturday or Sunday "
          "(line: 57%%, baseline: %d%%)" % (pct(weekend), weekend_baseline)),
-        (office >= 60, "nine-to-five",
+        (enough and office >= 60, "nine-to-five",
          "%d%% of commits land Mon-Fri, 09:00-17:59 "
          "(line: 60%%, baseline: %d%%)" % (pct(office), office_baseline)),
         # "the median week" was not the median of the weeks on the chart
@@ -1166,11 +1188,17 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
          "(lines: 60%%, <2x)" % (pct(covered), floor1(ratio))),
     ]
     fired = [(tag, line) for ok, tag, line in candidates if ok]
-    # `cut` is what the three-tag cap dropped. Four exclusions hold it to
-    # 0 or 1 - tear/dormant, nine-to-five against nocturnal and against
-    # weekend-coded (60 + 50 and 60 + 57 both pass 100), burst-driven
-    # against metronomic - but it is still written for an N it cannot
-    # reach, because those are properties of thresholds this file changes.
+    # `cut` is what the three-tag cap dropped. The exclusions still hold it
+    # to 0 or 1. tear/dormant and burst-driven/metronomic are each one pair.
+    # Among the hour/day tags, nocturnal, after-hours and nine-to-five read
+    # three disjoint windows no two of which can each take over half (or, for
+    # nine-to-five, 60%) of the commits, so at most one of the three fires;
+    # weekend-coded shares its commits with the two hour tags but not with
+    # nine-to-five (57 + 60 passes 100). So the most that fire at once is four
+    # - one of tear/dormant, one hour tag, weekend-coded, one rhythm tag - and
+    # the rhythm tag, last in this order, is always the one the cap drops. It
+    # is still written for an N it cannot reach: those are properties of
+    # thresholds this file sets, and the max() keeps it honest if they move.
     cut = max(0, len(fired) - 3)
     tags = [tag for tag, _ in fired[:3]]
     evidence = [line for _, line in fired[:3]]
