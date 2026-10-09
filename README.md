@@ -14,7 +14,7 @@ One `git log` call becomes four panels: a sparkline of commits per week, a 7×24
 
 Tested in this order; at most three print, and if more fired the tag line ends `(+N more)` for the count it cut, without naming them. They rule each other out enough that at most four fire together — the busiest repo shows one of `on a tear`/`dormant`, one window tag (`weekend-coded` can ride alongside `nocturnal` or `after-hours`), and one rhythm tag — so the one this order cuts is always `burst-driven` or `metronomic`, whichever rhythm the repo has.
 
-A tag about a window of the week has to clear more than the window's own size, or it fires on the absence of a pattern: 6 of 24 hours is a quarter of an evenly spread day, so a `nocturnal` line at 20% would fire on a repo with no night habit at all. Each of the four window tags sits at roughly twice the share an evenly spread history would put in its window, and prints that share beside its line as `baseline`. Those four also need **at least 21 commits** in the window first — on fewer, the share swings too far on too little (two pre-dawn commits are 100% `nocturnal` by accident), so a window tag stays silent below the count where its by-chance rate holds under 1%.
+A tag about a window of the week has to clear more than the window's own size, or it fires on the absence of a pattern: 6 of 24 hours is a quarter of an evenly spread day, so a `nocturnal` line at 20% would fire on a repo with no night habit at all. Each of the four window tags sits at roughly twice the share an evenly spread history would put in its window, and prints that share beside its line as `baseline`. Those four also need the charted window to hold **at least 21 commits in total** before any of them fires — on fewer, the share swings too far on too little (two pre-dawn commits are 100% `nocturnal` by accident), so a window tag stays silent below the count where its by-chance rate holds under 1%.
 
 | tag | fires when | baseline |
 |---|---|---|
@@ -28,7 +28,7 @@ A tag about a window of the week has to clear more than the window's own size, o
 | `metronomic` | a window of ≥4 weeks, ≥60% of them with a commit, and the busiest <2× the median of the weeks that have one | — |
 | `unremarkable` | nothing above fired | — |
 
-`nocturnal` and `after-hours` read two disjoint six-hour windows, so a repo can clear the 50% line in at most one of them. `unremarkable` is the one tag with no arithmetic to show, because nothing crossed anything.
+`nocturnal` and `after-hours` read two disjoint six-hour windows, so the only way a repo clears 50% in both is an exact 50/50 split with nothing in between — and that tie is read as `nocturnal`, so at most one of the two ever prints. `unremarkable` is the one tag with no arithmetic to show, because nothing crossed anything.
 
 Three things the numbers do not say:
 

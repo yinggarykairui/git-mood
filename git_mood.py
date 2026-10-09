@@ -1154,12 +1154,16 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
         # The line alone does not say which of the two is being read. All
         # four also carry the `enough` guard above: below WINDOW_MIN commits
         # the share is noise, whichever side of the line it lands. nocturnal
-        # and after-hours read disjoint 6-hour windows, so at most one of the
-        # two can clear 50%; nine-to-five is disjoint from both.
+        # and after-hours read disjoint 6-hour windows, so the only way both
+        # clear 50% is an exact 50/50 split with nothing midday; the
+        # `evening > night` tie-break on after-hours then fires nocturnal
+        # alone, so at most one of the two ever fires. nine-to-five reads a
+        # window disjoint from both and 60 + 50 > 100 rules it out against
+        # either, so at most one of the three hour tags fires at all.
         (enough and night >= 50, "nocturnal",
          "%d%% of commits land between 00:00 and 05:59 "
          "(line: 50%%, baseline: %d%%)" % (pct(night), night_baseline)),
-        (enough and evening >= 50, "after-hours",
+        (enough and evening >= 50 and evening > night, "after-hours",
          "%d%% of commits land between 18:00 and 23:59 "
          "(line: 50%%, baseline: %d%%)" % (pct(evening), evening_baseline)),
         (enough and weekend >= 57, "weekend-coded",
@@ -1190,10 +1194,10 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
     fired = [(tag, line) for ok, tag, line in candidates if ok]
     # `cut` is what the three-tag cap dropped. The exclusions still hold it
     # to 0 or 1. tear/dormant and burst-driven/metronomic are each one pair.
-    # Among the hour/day tags, nocturnal, after-hours and nine-to-five read
-    # three disjoint windows no two of which can each take over half (or, for
-    # nine-to-five, 60%) of the commits, so at most one of the three fires;
-    # weekend-coded shares its commits with the two hour tags but not with
+    # Among the hour/day tags, nocturnal, after-hours and nine-to-five are
+    # mutually exclusive - disjoint windows, plus the after-hours tie-break
+    # for the one 50/50 case two of them could share - so at most one of the
+    # three fires; weekend-coded can ride alongside an hour tag but not
     # nine-to-five (57 + 60 passes 100). So the most that fire at once is four
     # - one of tear/dormant, one hour tag, weekend-coded, one rhythm tag - and
     # the rhythm tag, last in this order, is always the one the cap drops. It
