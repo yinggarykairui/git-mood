@@ -12,7 +12,7 @@ One `git log` call becomes four panels: a sparkline of commits per week, a 7×24
 
 ## The tags
 
-Tested in this order; at most three print, and if more fired the tag line ends `(+N more)` for the count it cut, without naming them. They rule each other out enough that at most four fire together — the busiest repo shows one of `on a tear`/`dormant`, one window tag (`weekend-coded` can ride alongside `nocturnal` or `after-hours`), and one rhythm tag — so the one this order cuts is always `burst-driven` or `metronomic`, whichever rhythm the repo has.
+Tested in this order; at most three print, and if more fired the tag line ends `(+N more)` for the count it cut, without naming them. They rule each other out enough that at most four fire together — the busiest repo shows one of `on a tear`/`dormant`, up to two window tags (`weekend-coded` can ride alongside `nocturnal` or `after-hours`), and one rhythm tag — so the one this order cuts is always `burst-driven` or `metronomic`, whichever rhythm the repo has.
 
 A tag about a window of the week has to clear more than the window's own size, or it fires on the absence of a pattern: 6 of 24 hours is a quarter of an evenly spread day, so a `nocturnal` line at 20% would fire on a repo with no night habit at all. Each of the four window tags sits at roughly twice the share an evenly spread history would put in its window, and prints that share beside its line as `baseline`. Those four also need the charted window to hold **at least 21 commits in total** before any of them fires — on fewer, the share swings too far on too little (two pre-dawn commits are 100% `nocturnal` by accident), so a window tag stays silent below the count where its by-chance rate holds under 1%.
 
