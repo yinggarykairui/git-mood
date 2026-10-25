@@ -16,6 +16,14 @@ Tested in this order; at most three print, and if more fired the tag line ends `
 
 A tag about a window of the week has to clear more than the window's own size, or it fires on the absence of a pattern: 6 of 24 hours is a quarter of an evenly spread day, so a `nocturnal` line at 20% would fire on a repo with no night habit at all. Each of the four window tags sits at roughly twice the share an evenly spread history would put in its window, and prints that share beside its line as `baseline`. Those four also need the charted window to hold **at least 21 commits in total** before any of them fires — on fewer, the share swings too far on too little (two pre-dawn commits are 100% `nocturnal` by accident), so a window tag stays silent below the count where its by-chance rate holds under 1%.
 
+For example, a repository worked mostly on weekend evenings prints two tags, each followed by its evidence — the share measured, the `line` it had to cross, and the `baseline` an evenly spread history would have put there:
+
+```text
+mood    after-hours · weekend-coded
+        61% of commits land between 18:00 and 23:59 (line: 50%, baseline: 25%)
+        58% of commits land on a Saturday or Sunday (line: 57%, baseline: 29%)
+```
+
 | tag | fires when | baseline |
 |---|---|---|
 | `on a tear` | a current streak of ≥5 days | — |
