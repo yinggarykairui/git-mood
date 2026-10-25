@@ -1,6 +1,6 @@
 # git-mood
 
-Reads a git repository's history and draws a mood chart in your terminal: tempo, a punch-card clock, streaks, and a verdict that shows the arithmetic behind every threshold tag it prints.
+Reads a git repository's history and draws a mood chart in your terminal: tempo, a punch-card clock, streaks, and a verdict that shows its arithmetic.
 
 ![git-mood run with --weeks 26 against a clone of simonw/llm](screenshot.png)
 
@@ -8,7 +8,7 @@ Reads a git repository's history and draws a mood chart in your terminal: tempo,
 
 ## What it does
 
-One `git log` call becomes four panels: a sparkline of commits per week, a 7×24 punch card for every hour of the week, the longest and current daily streaks, and up to three mood tags. Every threshold tag it prints carries the number it measured and the line it crossed, so you can disagree with it. Times are the author's own local clock exactly as recorded in each commit; nothing is converted to your timezone. When color is on, the punch card tints the commits it holds in the 00:00–05:59 hours, and its caption says so when there are any to tint. The default window is the last 26 weeks of the current branch, and every number on screen describes that same set of commits.
+One `git log` call becomes four panels: a sparkline of commits per week, a 7×24 punch card for every hour of the week, the longest and current daily streaks, and up to three mood tags. Every tag that fires on a threshold prints the number git-mood measured and the line that number crossed, so you can disagree with the call. Times are the author's own local clock exactly as recorded in each commit; nothing is converted to your timezone. When color is on, the punch card tints the commits it holds in the 00:00–05:59 hours, and its caption says so when there are any to tint. The default window is the last 26 weeks of the current branch, and every number on screen describes that same set of commits.
 
 ## The tags
 
