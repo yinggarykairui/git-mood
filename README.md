@@ -64,8 +64,11 @@ python3 git_mood.py --author ada         # substring of "Name <email>"
 python3 git_mood.py --ascii --no-color   # plain ASCII, no ANSI
 python3 git_mood.py --color | less -R    # keep the color through a pipe
 python3 git_mood.py -- --weird-dir-name  # end the options; the rest is the path
+python3 git_mood.py --version            # print the version and exit
 python3 git_mood.py --help
 ```
+
+It exits `0` on a chart (or a clean *nothing to chart*), `1` on an environment problem (no `git`, or not a repository), `2` on a usage error (an unknown flag, or a `--weeks` out of range), and `130` on Ctrl-C.
 
 Color is decided by the first of these that applies:
 
