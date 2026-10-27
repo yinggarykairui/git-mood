@@ -1816,7 +1816,27 @@ def ascii_requested(argv):
     return False
 
 
+def restore_signal(sig, handler):
+    """Hand a saved disposition back, tolerating the two values that cannot be.
+
+    getsignal() returns None when the current handler was installed from C and
+    has no Python object to name; signal() cannot take None, so there is
+    nothing to restore and we leave ours in place. Off the main thread signal()
+    raises ValueError - the same guard main() uses when it installs them.
+    """
+    if handler is None:
+        return
+    try:
+        signal.signal(sig, handler)
+    except (ValueError, OSError):
+        pass
+
+
 def main(argv):
+    ascii_ = ascii_requested(argv)
+    # Before parse_args(), for the same reason ascii_requested() is read
+    # there: parse_args()'s own errors are output too.
+    globals()["ASCII_OUT"] = ascii_
     # Hand SIGINT back to Python for the run itself. The module-level handler
     # above exists to cover startup; from here on the interrupt semantics are
     # the ones this program has always had - default_int_handler raises
@@ -1825,6 +1845,18 @@ def main(argv):
     # latter would terminate the process on the spot and leave -2. The reason
     # is in the comment on that handler; the short version is that a Python
     # handler firing inside subprocess.Popen can wedge the process forever.
+    #
+    # main() is a public entry point - `import git_mood; git_mood.main([...])`
+    # is a supported call - so these are the caller's dispositions, not ours
+    # to keep. Save them now and put them back in the finally below, or an
+    # import that runs the program once leaves default_int_handler where the
+    # caller's SIGINT handler was, and SIG_DFL where Python's SIGPIPE ignore
+    # was (which turns the caller's next broken pipe from a BrokenPipeError
+    # into a killed process). getsignal() before signal(), so what we save is
+    # the caller's and not the one we are about to install.
+    saved_sigint = signal.getsignal(signal.SIGINT)
+    saved_sigpipe = (signal.getsignal(signal.SIGPIPE)
+                     if hasattr(signal, "SIGPIPE") else None)
     try:
         signal.signal(signal.SIGINT, signal.default_int_handler)
     except ValueError:
@@ -1832,10 +1864,6 @@ def main(argv):
     # Without this, `git-mood | head -3` raises BrokenPipeError on exit.
     if hasattr(signal, "SIGPIPE"):
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
-    ascii_ = ascii_requested(argv)
-    # Before parse_args(), for the same reason ascii_requested() is read
-    # there: parse_args()'s own errors are output too.
-    globals()["ASCII_OUT"] = ascii_
     try:
         opts = parse_args(argv)
         plain = ascii_only(opts, GLYPHS)
@@ -1870,6 +1898,12 @@ def main(argv):
         return EXIT_ENV
     except KeyboardInterrupt:
         return EXIT_INTERRUPT
+    finally:
+        # Put the caller's dispositions back, whichever way we leave - a
+        # chart, a usage error, a Ctrl-C, or an exception on its way up.
+        restore_signal(signal.SIGINT, saved_sigint)
+        if hasattr(signal, "SIGPIPE"):
+            restore_signal(signal.SIGPIPE, saved_sigpipe)
     return 0
 
 
