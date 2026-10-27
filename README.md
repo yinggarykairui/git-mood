@@ -68,6 +68,8 @@ python3 git_mood.py --version            # print the version and exit
 python3 git_mood.py --help
 ```
 
+A long option can also take its value attached with `=`, as in `--weeks=8` or `--author=ada`. A bare `-` is read as a path, not stdin, so `git-mood -` looks for a directory named `-`.
+
 It exits `0` on a chart (or a clean *nothing to chart*), `1` on an environment problem (no `git`, or not a repository), `2` on a usage error (an unknown flag, or a `--weeks` out of range), and `130` on Ctrl-C.
 
 Color is decided by the first of these that applies:
