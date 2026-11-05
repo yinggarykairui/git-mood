@@ -677,13 +677,18 @@ def parse_args(argv):
             # error.
             raise Usage("%s takes no path argument" % want_flag,
                         echo=path, tip=False)
+        emit(want)
         if discarded:
             # Only the options that choose *what* to chart are discarded;
             # parse_args' docstring says why. stderr, so stdout stays
             # byte-identical to a plain --help and the exit code stays 0.
+            # Written *after* emit(), so on an 80x24 terminal the note lands
+            # on the last visible row instead of scrolling off above 29 lines
+            # of help - which is the one case the note exists for
+            # (`--help --weeks 8`); `--version --weeks 8` was two lines and
+            # fine either way. stdout is untouched by the move and exit stays 0.
             write(sys.stderr, "%s: %s ignores %s\n"
                   % (PROG, want_flag, ", ".join(discarded.values())), ascii_)
-        emit(want)
         raise SystemExit(0)
     # `path or "."` collapsed two different command lines into one: no
     # argument at all, and an argument that is the empty string. The first
