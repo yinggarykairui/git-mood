@@ -687,8 +687,16 @@ def parse_args(argv):
             # of help - which is the one case the note exists for
             # (`--help --weeks 8`); `--version --weeks 8` was two lines and
             # fine either way. stdout is untouched by the move and exit stays 0.
+            #
+            # Named in a canonical order - --weeks, --all, --author, the order
+            # the help's own examples use - not argv order, so
+            # `--help --all --weeks 8` and `--help --weeks 8 --all` print one
+            # diffable line for one intent. setdefault already keeps the first
+            # spelling, so a flag written twice is still named once.
+            names = [discarded[key] for key in ("weeks", "all", "author")
+                     if key in discarded]
             write(sys.stderr, "%s: %s ignores %s\n"
-                  % (PROG, want_flag, ", ".join(discarded.values())), ascii_)
+                  % (PROG, want_flag, ", ".join(names)), ascii_)
         raise SystemExit(0)
     # `path or "."` collapsed two different command lines into one: no
     # argument at all, and an argument that is the empty string. The first
