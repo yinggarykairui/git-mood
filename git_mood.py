@@ -465,10 +465,24 @@ LONG_OPTIONS = ("--weeks", "--all", "--author", "--ascii", "--color",
 def nearest_option(flag):
     """The long option `flag` is a near miss for, or None.
 
-    difflib decides, at n=2 and cutoff=0.6, and this function does not
+    Two stages. A prefix test first: a typed stem that is a non-empty prefix
+    of exactly one option stem is that option, so the one-dash-too-many
+    slips difflib scored under the cutoff (`--w`, `--h`, `--we`, `--co`) are
+    advised again. An ambiguous prefix (`--a`: all, author, ascii) names no
+    single answer and falls through - the same "report rather than guess"
+    rule a difflib tie takes, below.
+
+    Then difflib decides, at n=2 and cutoff=0.6, and this function does not
     second-guess the ratio it computed - it only asks difflib for the same
     two candidates' scores back, so there is one similarity rule here and
     not two.
+
+    The typed stem is case-folded before either stage. --WEEKS is the
+    commonest near-miss class and scored 0.0 against `weeks` while --Weeks
+    scored 0.8, so an all-caps flag got the `; try: git-mood --help` tail
+    where its mixed-case twin got advice; one .lower() closes the whole
+    class. The suggestion keeps its canonical case - it is read back out of
+    LONG_OPTIONS, never echoed from the typed token.
 
     The leading `--` is dropped before scoring, on both sides. It is two
     characters every candidate shares with every typed flag - the call
@@ -484,20 +498,27 @@ def nearest_option(flag):
     rather than guesses, and naming one of two equally close options is a
     guess; the reader still has --help, which is one line further down.
 
-    difflib is imported here and not at the top of the file. It pulls in
-    `re` for about 7 ms against a ~26 ms cold start, on a path almost no
-    run takes, and every module-level import widens the window in which a
-    Ctrl-C is answered by the interpreter instead of by this program.
+    difflib is imported past the prefix test, not at the top of the file.
+    It pulls in `re` for about 7 ms against a ~26 ms cold start, on a path
+    almost no run takes, and every module-level import widens the window in
+    which a Ctrl-C is answered by the interpreter instead of by this
+    program. The prefix path does not need it at all.
     """
-    import difflib
     stems = [option[2:] for option in LONG_OPTIONS]
-    near = difflib.get_close_matches(flag[2:], stems, 2, 0.6)
+    stem = flag[2:].lower()
+    if stem:
+        starts = [opt for opt, s in zip(LONG_OPTIONS, stems)
+                  if s.startswith(stem)]
+        if len(starts) == 1:
+            return starts[0]
+    import difflib
+    near = difflib.get_close_matches(stem, stems, 2, 0.6)
     if not near:
         return None
     if len(near) == 2:
         # Scored as get_close_matches scored them - candidate seq1, typed
         # seq2. The other order is a different number.
-        scorer = difflib.SequenceMatcher(b=flag[2:])
+        scorer = difflib.SequenceMatcher(b=stem)
         scorer.set_seq1(near[0])
         best = scorer.ratio()
         scorer.set_seq1(near[1])
