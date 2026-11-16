@@ -77,7 +77,11 @@ def render(ncommits, nweeks, author, g, ascii_out):
 # `--all --ascii --author=` sits at room 19).
 SCALES = [
     (1, 1), (148, 16), (5_000, 52), (90_000, 300),
-    (1_300_000, 1_110), (100_000_000, 5_200), (10 ** 15, 52_000),
+    (1_300_000, 1_110), (100_000_000, 5_200),
+    # The floor band no real repository reaches, kept so the item-1 rungs below
+    # the full frame are actually exercised: room ~12 lands on `author (all)`
+    # (clarifier, no frame) and room ~9 on bare `author` (noun only).
+    (10 ** 10, 100_000), (10 ** 10, 10_000_000), (10 ** 15, 52_000),
 ]
 AUTHORS = ["", "ada", " ada ", "alexandra-barnes", "中" * 20, "日本語の名前",
            "a" * 60, "éxample", "\x07\x1f"]
@@ -135,8 +139,8 @@ class SummaryWidthBound(unittest.TestCase):
             for nc, nw in SCALES:
                 room = summary_room(nc, nw, date(2005, 4, 11),
                                     date(2026, 8, 23), g)
-                if room < 11:  # "author (all)" is 11 cells; below it, the floor
-                    continue
+                if room < 12:  # "author (all)" is 12 cells; at 11 the field is
+                    continue   # bare "author", which the clarifier test must skip
                 line = render(nc, nw, "", g, ascii_out)
                 who = line.split(g["sep"])[1]
                 self.assertIn("all", who,
