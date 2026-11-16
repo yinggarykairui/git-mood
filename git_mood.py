@@ -1452,22 +1452,31 @@ def render_summary(commits, opts, nweeks, start, today, g):
         if opts.author == "":
             # The empty string is a substring of every ident, so this filter
             # is applied and stops nothing. Announcing it without saying so
-            # left the reader hunting for the commits it had removed, so the
-            # clarifier is the one thing on this ladder that is never spent.
+            # left the reader hunting for the commits it had removed.
             #
-            # Four rungs, two choices: keep the frame or drop it, spell the
-            # clarifier out or shorten it. With the frame gone the clarifier
-            # is the only thing naming what the field is, which is why the
-            # third rung spends the frame and takes the long form back.
+            # The rule every rung keeps (#134 item 1): the field always owes a
+            # cold reader **a noun naming it as the author filter** and **a sign
+            # the empty filter matches everything**. What a narrower budget
+            # spends is the verbose frame (`filtered to`) and the literal empty
+            # value, never the noun or the clarifier. The earlier ladder spent
+            # the noun first: at `room` 19 - torvalds/linux under `--all --ascii
+            # --author=` - it dropped from `filtered to "" (all)` (20, over
+            # budget) straight to `"" (matches all)` (16), a field with nothing
+            # saying it is the author filter at all. `author "" (all)` (15) fits
+            # there and keeps the noun, so it is the rung that takes over when
+            # the frame cannot be afforded.
             #
-            # Worst case - --ascii, which costs a cell for the arrow, with a
-            # window past a thousand weeks - the frame lasts to a million
-            # commits and the third rung to a billion. Anything narrower
-            # holds each rung longer: at the default 26-week window the
-            # frame reaches a billion. The fourth rung is for nothing that
-            # exists either way.
+            # Five rungs, narrowing: the full frame, the frame with the short
+            # clarifier, then the compact noun `author` carrying value +
+            # clarifier, then the noun with the clarifier alone (the empty value
+            # reads as "" either way), then the bare noun as a floor. The floor
+            # is `author`, not `""` with a trailing space - which removes item
+            # 6's stray-space floor on this ladder as a side effect. Worst case
+            # (--ascii, window past a thousand weeks) the full frame lasts to a
+            # million commits; every rung below it holds far longer, and the two
+            # floor rungs are for nothing any repository reaches.
             who = elastic((empty + " (matches all)", empty + " (all)",
-                           '"" (matches all)', '"" (all)'), room)
+                           'author "" (all)', "author (all)", "author"), room)
         else:
             # Rung one is the form this branch has always produced: the name
             # cut to what the frame leaves, floored at MARKED_FLOOR so fit()
