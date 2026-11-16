@@ -277,12 +277,17 @@ def marked(prefix):
     return prefix.rstrip(".") + "..."
 
 
-def oneline(text, limit=60):
-    """Errors are one line, so user data never breaks the format.
+def flatten(text):
+    """Whitespace folded and control characters tamed, with no length budget
+    applied: the display-safe form oneline() and fit() both start from.
 
-    Below four characters there is no room for the ellipsis, and adding one
-    anyway returned a string longer than the limit asked for - oneline("abcdef",
-    2) came back as "abcde...". Under that floor the text is simply cut.
+    Pulled out of oneline() so fit() can flatten *without* oneline's marking
+    step. fit() measures in cells and does its own cut; when it first flattened
+    through `oneline(text, cells)`, oneline marked at the *character* count
+    before fit re-trimmed by cells, and a wide first character left a two-dot
+    stub - `fit("中"*30, 4)` came back `中..`, a cut that looks marked and is
+    not (#134 item 5). Flattening here and marking once, in the caller that
+    owns the budget, is the fix.
     """
     # str.split() with no argument folds on Unicode whitespace, which counts
     # the C0 separators \x1c-\x1f as spaces and drops them before tame() ever
@@ -294,7 +299,17 @@ def oneline(text, limit=60):
     seps = "\x1c\x1d\x1e\x1f"
     spaced = "".join(" " if ch.isspace() and ch not in seps else ch
                      for ch in str(text))
-    flat = tame(" ".join(part for part in spaced.split(" ") if part))
+    return tame(" ".join(part for part in spaced.split(" ") if part))
+
+
+def oneline(text, limit=60):
+    """Errors are one line, so user data never breaks the format.
+
+    Below four characters there is no room for the ellipsis, and adding one
+    anyway returned a string longer than the limit asked for - oneline("abcdef",
+    2) came back as "abcde...". Under that floor the text is simply cut.
+    """
+    flat = flatten(text)
     if len(flat) <= limit:
         return flat
     if limit < 4:
@@ -330,8 +345,14 @@ def fit(text, cells):
     fewer was never trimmed at all: fit("XXX", 4) handed back six cells. Now
     the loop runs on the same measure as the test, and the ellipsis is dropped
     rather than paid for when the budget cannot hold both.
+
+    flatten(), not oneline(): oneline() marks at the character count, so a
+    wide first character under a four-cell budget left `中..` - a two-dot stub
+    that looks marked and is not (#134 item 5). fit() flattens unmarked and
+    applies its own cell-measured marker once, below, so what it returns is
+    either a clean marked cut or a clean unmarked one.
     """
-    flat = oneline(text, cells)
+    flat = flatten(text)
     if display_width(flat) <= cells:
         return flat
     for tail in ("..." if cells >= MARKED_FLOOR else "", ""):
