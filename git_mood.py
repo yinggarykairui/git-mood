@@ -154,33 +154,20 @@ class EnvProblem(Exception):
 # argument parsing
 # --------------------------------------------------------------------------
 
-# Codepoints that draw nothing but change how the characters around them
-# are laid out. They are not control characters by category, so the
-# `ch < " "` test below never saw them, and a repo name or an --author value
-# holding U+202E flipped the visual order of the rest of the header line -
-# the same hijack an embedded ESC performs, with no escape byte in sight.
-#
-# The set is Unicode's own: general category Cf, "format". Hand-written
-# ranges (ZWSP..RLM, LRE..RLO, LRI..PDI, the BOM) covered the block a
-# reviewer happened to think of and left the rest of the same class through
-# - U+061C ARABIC LETTER MARK is a Bidi_Control and was not marked, and
-# neither were U+00AD, U+180E, U+206A..U+206F or the interlinear annotation
-# marks U+FFF9..U+FFFB. Cf is exactly the class the comment above describes,
-# and it is a strict superset of the ranges it replaces, so nothing that
-# used to be marked stopped being marked.
+# tame() below marks Unicode general category Cf ("format") - codepoints that
+# draw nothing but reorder the characters around them. They are not control
+# characters, so the `ch < " "` test misses them, and one like U+202E in a
+# repo name or --author value flips the visual order of the rest of the header
+# line (the same hijack an embedded ESC performs). Cf is a strict superset of
+# the hand-written bidi/BOM ranges it replaced.
 
 
-# --ascii is a promise about the bytes this program writes, and write()
-# used to keep it with encode("ascii", "replace") - one "?" per codepoint,
-# applied after every width was measured. On the chart that is only ugly;
-# on an error line it destroys the datum the line exists to carry, because
-# the path the reader has to go fix is exactly the part that is not ASCII:
-#     git-mood --ascii /tmp/<four CJK chars>  ->  not a git repository: /tmp/????
-# Escaping instead of replacing keeps the path recoverable, and doing it
-# here rather than in write() keeps it measurable: tame() runs before
-# oneline(), fit() and display_width(), so an escape that costs six cells
-# is budgeted as six cells and an 80-column line stays an 80-column line.
-# Escaping after the fit is what would overhang.
+# --ascii is a promise about every byte written. Escaping non-ASCII (rather
+# than replacing with "?") keeps an error line's datum recoverable: the path a
+# reader has to go fix is exactly the part that is not ASCII. tame() does it
+# before oneline()/fit()/display_width() run, so an escape that costs six cells
+# is budgeted as six and an 80-column line stays one; escaping after the fit
+# would overhang.
 ASCII_OUT = False
 
 
@@ -190,14 +177,13 @@ def ascii_escape(ch):
 
 
 def tame(text):
-    """Control characters out. A repo directory named with an embedded ESC
-    would otherwise recolor the caller's terminal from our own header.
+    """Control characters out (an embedded ESC in a repo name would otherwise
+    recolor the caller's terminal from our header); they become "?".
 
-    Under --ascii, everything else above U+007F is escaped rather than
-    dropped: a control character carries no datum worth keeping and stays a
-    "?", while a path or an author name does. The backslash is doubled so
-    the escaped form is unambiguous - a directory literally named `\\u4e2d`
-    and one named with the character do not print the same.
+    Under --ascii, everything else above U+007F is escaped rather than dropped,
+    so a path or author name stays recoverable. The backslash is doubled so the
+    escaped form is unambiguous - a directory literally named `\\u4e2d` and one
+    named with the character do not print the same.
     """
     out = []
     for ch in str(text):
@@ -218,11 +204,9 @@ def tame(text):
 def whole_escapes(text):
     """`text` with a trailing half-written escape removed.
 
-    The trims below cut one character at a time, and under --ascii the
-    characters being cut are the six of a `\\u4e2d`. A budget that runs out
-    mid-token printed `"\\u4e2d\\u4e2`, which is not a prefix of the name
-    the reader is being shown: it is a backslash-u meaning nothing, dangling
-    off the end of a value whose whole job is to be checkable.
+    Under --ascii the per-character trims cut the six chars of a `\\u4e2d`; a
+    budget that runs out mid-token left a dangling `\\u4e2`, not a prefix of
+    the name shown, off a value whose whole job is to be checkable.
     """
     if not ASCII_OUT:
         return text
@@ -239,9 +223,9 @@ def whole_escapes(text):
             elif nxt == "U":
                 i += 10
             else:
-                # tame() writes a backslash only as the first character of
-                # one of the three tokens above, so a backslash followed by
-                # anything else is one of them with its tail already cut.
+                # tame() writes a backslash only to begin one of the three
+                # tokens above, so a backslash followed by anything else is
+                # one of them with its tail already cut.
                 break
         if i > end:
             break
@@ -252,37 +236,28 @@ def whole_escapes(text):
 def marked(prefix):
     """`prefix` with the "..." cut marker on it, and never a fourth dot.
 
-    Both trims below finish by joining a kept prefix to the marker, and a
-    prefix already ending in "." joined to it as `name....` - four dots,
-    which reads as a longer marker or as part of the name instead of as the
-    cut it is. The dots come off the prefix rather than the marker, so the
-    result is never longer than the prefix plus three and every budget
-    written against that sum still holds. A prefix that is nothing but dots
-    leaves the marker alone: three dots is shorter than the prefix was, so
-    it is still inside the limit, and there was no other text to keep.
+    A prefix already ending in "." would join as `name....`, which reads as a
+    longer marker or as part of the name. Stripping the dots off the prefix
+    (not the marker) keeps the result no longer than prefix + 3, so every
+    budget written against that sum holds; an all-dots prefix stays inside the
+    limit either way.
     """
     return prefix.rstrip(".") + "..."
 
 
 def flatten(text):
-    """Whitespace folded and control characters tamed, with no length budget
-    applied: the display-safe form oneline() and fit() both start from.
+    """Whitespace folded and control characters tamed, with no length budget:
+    the display-safe form oneline() and fit() both start from.
 
-    Pulled out of oneline() so fit() can flatten *without* oneline's marking
-    step. fit() measures in cells and does its own cut; when it first flattened
-    through `oneline(text, cells)`, oneline marked at the *character* count
-    before fit re-trimmed by cells, and a wide first character left a two-dot
-    stub - `fit("中"*30, 4)` came back `中..`, a cut that looks marked and is
-    not (#134 item 5). Flattening here and marking once, in the caller that
-    owns the budget, is the fix.
+    Separate from oneline() so fit() can flatten *without* oneline's marking
+    step and apply its own cell-measured marker once - marking here at the
+    character count left wide-char cuts like `fit("中"*30, 4)` -> `中..` a
+    two-dot stub that looks marked and is not (#134 item 5).
     """
-    # str.split() with no argument folds on Unicode whitespace, which counts
-    # the C0 separators \x1c-\x1f as spaces and drops them before tame() ever
-    # sees them: an author string of one \x1f came out empty rather than as
-    # the "?" every other control character gets. So the fold is Python's own
-    # whitespace set minus those four. Narrowing it to six ASCII characters
-    # instead fixed the separators and let everything else str.split() used
-    # to catch - U+0085, U+00A0, U+2028, U+2029 - reach stdout raw.
+    # Fold on Python's full whitespace set MINUS the C0 separators \x1c-\x1f:
+    # str.split() counts those as whitespace and drops them before tame() sees
+    # them, so a lone \x1f came out empty instead of as "?". Keep the rest of
+    # the set, or U+0085/U+00A0/U+2028/U+2029 reach stdout raw.
     seps = "\x1c\x1d\x1e\x1f"
     spaced = "".join(" " if ch.isspace() and ch not in seps else ch
                      for ch in str(text))
@@ -293,8 +268,8 @@ def oneline(text, limit=60):
     """Errors are one line, so user data never breaks the format.
 
     Below four characters there is no room for the ellipsis, and adding one
-    anyway returned a string longer than the limit asked for - oneline("abcdef",
-    2) came back as "abcde...". Under that floor the text is simply cut.
+    anyway returned a string longer than the limit; under that floor the text
+    is simply cut.
     """
     flat = flatten(text)
     if len(flat) <= limit:
@@ -305,17 +280,14 @@ def oneline(text, limit=60):
 
 
 # Below four cells fit() stops paying for its "..." and cuts silently, so a
-# budget under this floor buys a *wrong* string rather than a short one.
-# fit() reads it, and so does render_summary, which is the caller that has
-# to size a budget down to nothing. render_head's budget starts at 46 and
-# never approaches this, so it does not.
+# budget under this floor buys a *wrong* string, not a short one. fit() and
+# render_summary (which sizes a budget down toward nothing) both read it.
 MARKED_FLOOR = 4
 
 
 def display_width(text):
-    """Terminal cells, not codepoints. A rule sized in codepoints came up
-    short under any name holding wide characters: five party poppers are five
-    codepoints and ten cells, so the rule drew 68 under a 73-cell line."""
+    """Terminal cells, not codepoints: wide (W/F) characters count 2. A rule
+    sized in codepoints drew short under any name holding wide characters."""
     width = 0
     for ch in text:
         if unicodedata.combining(ch):
@@ -325,19 +297,15 @@ def display_width(text):
 
 
 def fit(text, cells):
-    """oneline(), measured in cells, so the result really is that wide.
+    """oneline(), measured in cells, so the result really is that wide. The
+    trim loop and its test both count cells (a char-counted loop never trimmed
+    text of <=3 wide chars), and the "..." is dropped rather than paid for when
+    the budget cannot hold both.
 
-    The trim loop used to stop at three characters while the test it was
-    trying to satisfy counted cells, so any text of three wide characters or
-    fewer was never trimmed at all: fit("XXX", 4) handed back six cells. Now
-    the loop runs on the same measure as the test, and the ellipsis is dropped
-    rather than paid for when the budget cannot hold both.
-
-    flatten(), not oneline(): oneline() marks at the character count, so a
-    wide first character under a four-cell budget left `中..` - a two-dot stub
-    that looks marked and is not (#134 item 5). fit() flattens unmarked and
-    applies its own cell-measured marker once, below, so what it returns is
-    either a clean marked cut or a clean unmarked one.
+    flatten(), not oneline(): oneline() marks at the character count, so a wide
+    first character under a four-cell budget left `中..` - a two-dot stub that
+    looks marked and is not (#134 item 5). fit() flattens unmarked and applies
+    its own cell-measured marker once, below.
     """
     flat = flatten(text)
     if display_width(flat) <= cells:
@@ -356,14 +324,10 @@ def fit(text, cells):
 def env_line(prefix, tail, tail2=None, joiner=": "):
     """`prefix` + user text, cut so `git-mood: ` plus all of it fits 80 cells.
 
-    Every environment message is printed as `git-mood: <message>`, so the
-    budget for the message is 80 cells less that prefix, and the budget for
-    the elastic tail is whatever the fixed words leave of it.
-
-    It has to be fit() and not oneline(): oneline()'s limit counts
-    characters, and forty CJK characters are forty characters and eighty
-    cells, so a path of them rendered a 114-cell line under a rule that
-    believed it had already trimmed. `tail2` is for the one message with two
+    Every environment message prints as `git-mood: <message>`, so the elastic
+    tail's budget is 80 cells less PROG, ": " and the prefix. fit() and not
+    oneline() because the budget is in cells: oneline()'s char limit let forty
+    CJK chars render a 114-cell line. `tail2` is the one message with two
     elastic parts; it gets whatever the first one leaves.
     """
     room = 80 - len(PROG) - len(": ") - display_width(prefix)
