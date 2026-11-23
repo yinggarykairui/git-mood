@@ -516,26 +516,21 @@ def parse_args(argv):
     Clustering (`-aw 4`) is deliberately not split; it reports as an unknown
     option rather than guessing.
 
-    --help and --version are recorded and acted on after the scan, not in the
-    middle of it. Printing on sight made `git-mood --help nonsense` exit 0
-    with the help text, which reads as "that command line was fine".
-
-    Only a path argument makes that a usage error, though. Refusing every
-    other token counted `--no-color --help` and `--ascii --help` as mistakes,
-    which is nobody's mistake: those flags say how to print, and the help is
-    printed. An unknown option still raises inside the scan, so `--help
-    --nope` is exit 2 the way it always was.
+    --help and --version are recorded and acted on after the scan, not on
+    sight (which made `git-mood --help nonsense` exit 0 with the help text).
+    Only a path argument then makes it a usage error: `--no-color --help` and
+    `--ascii --help` are fine, since those flags say how to print and the help
+    is printed. An unknown option still raises inside the scan, so `--help
+    --nope` is exit 2.
     """
     path, weeks, whole, author, ascii_ = None, 26, False, None, False
     # Three states, not two: "auto" is the default and the only one that
-    # consults the terminal. `--no-color` and `--color` are decisions the
-    # caller has already made, and color_enabled() honours them without
-    # asking anything else.
+    # consults the terminal; "off"/"on" are decisions the caller already made.
     color = "auto"
     i, only_paths = 0, False
     want, want_flag = None, None
-    # Parsed and thrown away, keyed by option and valued by the first
-    # spelling: a flag written twice is named once. Nothing here is elastic.
+    # Parsed and thrown away, keyed by option, valued by the first spelling:
+    # a flag written twice is named once.
     discarded = {}
     while i < len(argv):
         arg = argv[i]
@@ -549,9 +544,7 @@ def parse_args(argv):
         elif arg == "--":
             only_paths = True          # everything after is a path, even `-x`
         elif arg in ("-h", "--help"):
-            # --help wins when both are given: it is the larger answer, and
-            # it names --version anyway. It wins whichever order they come
-            # in, so this assignment is not guarded.
+            # --help wins over -V in either order, so this is not guarded.
             want, want_flag = HELP, arg
         elif arg in ("-V", "--version"):
             if want is None:
@@ -562,13 +555,10 @@ def parse_args(argv):
         elif arg == "--ascii":
             ascii_ = True
         elif arg == "--no-color":
-            # Not last-wins between the two. `--color --no-color` is a
-            # command line asking for both, and of the two answers only one
-            # can be wrong in a way that costs the reader anything: ANSI
-            # written into a file, a pipe, or a terminal that cannot render
-            # it. So refusing wins, the way --help wins over -V, whichever
-            # order they come in - which is why this is not guarded and
-            # `--color` below is.
+            # Not last-wins: of `--color --no-color`, only one answer can be
+            # wrong in a way that costs the reader (ANSI into a file or pipe),
+            # so refusing wins in either order - hence this is unguarded and
+            # `--color` below is guarded.
             color = "off"
         elif arg == "--color":
             if color == "auto":
@@ -583,20 +573,15 @@ def parse_args(argv):
                                    "search for it as text")
             discarded.setdefault("author", flag)
         elif arg.startswith("-") and arg != "-":
-            # "unknown option" sent the reader hunting for a flag named
-            # `aw`. Both shapes below are made of flags --help does list,
-            # so the answer is how to write them, not that they do not
-            # exist. The docstring's "deliberately not split" stands: this
-            # names the rule instead of guessing at the intent.
+            # Clusters and attached values below are made of real flags, so
+            # short_option_problem() names the rule they broke rather than
+            # calling them unknown (the docstring's "not split" stands).
             message, extra = short_option_problem(arg)
-            # Long options only: short_option_problem() names the rule a
-            # cluster or an attached value broke, which beats the nearest
-            # single letter. `flag` stops at the "=", so `--wekes=4` scores
-            # as `--wekes` while the echo still shows the whole token.
-            #
-            # `near != flag` because `--ascii=1` scores 1.0 against --ascii:
-            # the nearest option is the one already typed, and offering it
-            # is a no-op that evicts the "; try: git-mood --help" tail.
+            # nearest_option only for long options, and `flag` stops at the
+            # "=" so `--wekes=4` scores as `--wekes` while the echo shows the
+            # whole token. `near != flag` because `--ascii=1` scores 1.0
+            # against --ascii: offering the token already typed is a no-op
+            # that evicts the "; try: git-mood --help" tail.
             if arg.startswith("--"):
                 near = nearest_option(flag)
                 if near and near != flag:
@@ -609,39 +594,27 @@ def parse_args(argv):
             raise Usage("unexpected argument", echo=arg)
     if want is not None:
         if path is not None:
-            # No "try: --help" tail here: it would advise the user to ask for
-            # the help this very line is refusing to print. The path they
-            # typed goes on the echo line instead, like every other usage
-            # error.
+            # No "try: --help" tail: it would advise asking for the help this
+            # line is refusing to print. The path goes on the echo line.
             raise Usage("%s takes no path argument" % want_flag,
                         echo=path, tip=False)
         emit(want)
         if discarded:
-            # Only the options that choose *what* to chart are discarded;
-            # parse_args' docstring says why. stderr, so stdout stays
-            # byte-identical to a plain --help and the exit code stays 0.
-            # Written *after* emit(), so on an 80x24 terminal the note lands
-            # on the last visible row instead of scrolling off above 29 lines
-            # of help - which is the one case the note exists for
-            # (`--help --weeks 8`); `--version --weeks 8` was two lines and
-            # fine either way. stdout is untouched by the move and exit stays 0.
-            #
-            # Named in a canonical order - --weeks, --all, --author, the order
-            # the help's own examples use - not argv order, so
-            # `--help --all --weeks 8` and `--help --weeks 8 --all` print one
-            # diffable line for one intent. setdefault already keeps the first
-            # spelling, so a flag written twice is still named once.
+            # The note goes to stderr (stdout stays byte-identical to a plain
+            # --help, exit stays 0) and after emit(), so on an 80x24 terminal
+            # it lands on the last row rather than scrolling off above the
+            # help - the one case it exists for (`--help --weeks 8`). Named in
+            # a canonical order, not argv order, so one intent prints one
+            # diffable line.
             names = [discarded[key] for key in ("weeks", "all", "author")
                      if key in discarded]
             write(sys.stderr, "%s: %s ignores %s\n"
                   % (PROG, want_flag, ", ".join(names)), ascii_)
         raise SystemExit(0)
-    # `path or "."` collapsed two different command lines into one: no
-    # argument at all, and an argument that is the empty string. The first
-    # should not be quoted back at the reader as a path they never typed;
-    # the second is a bad path like any other and gets the exit-1 treatment
-    # every other bad path gets, rather than silently charting the cwd -
-    # which is what a script passing an unset "$VAR" hits.
+    # Not `path or "."`: that collapses "no argument" and "the empty string".
+    # Only the first defaults to "."; the empty string is a bad path and gets
+    # the exit-1 treatment (what a script passing an unset "$VAR" hits), rather
+    # than silently charting the cwd. `given` carries the distinction.
     return Options("." if path is None else path, weeks, whole, author,
                    ascii_, color, path is not None)
 
