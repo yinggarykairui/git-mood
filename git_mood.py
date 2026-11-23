@@ -1102,33 +1102,22 @@ class Ink(object):
 
 
 def color_enabled(opts):
-    """First match wins, and README.md prints this list in the same order.
-
-    Every rule below is a statement someone made on purpose, ordered by how
-    specific that someone was: this command line, then this environment,
-    then the terminal's own account of itself, then the shape of stdout.
+    """First match wins; README.md prints this list in the same order: command
+    line, then environment, then the terminal's own account, then stdout.
     """
     if opts.color != "auto":
         return opts.color == "on"
-    # no-color.org: the variable disables color "when present and not an
-    # empty string". `is not None` honoured `NO_COLOR=` as well, which is
-    # how a shell exports a variable it was told to leave unset, and the
-    # convention says that case must not suppress.
+    # no-color.org: disable "when present and not an empty string", so the
+    # truthiness test, not `is not None` - a shell exports `NO_COLOR=` for a
+    # variable it was told to leave unset, and that must not suppress.
     if os.environ.get("NO_COLOR"):
         return False
-    # The same emptiness rule, read in the other direction. FORCE_COLOR is
-    # the name most of the ecosystem uses and CLICOLOR_FORCE is the older
-    # one; a program that reads neither cannot be piped into `less -R`, and
-    # this one could not. NO_COLOR is tested first because the convention
-    # says the off switch wins, and because a machine that exports both has
-    # a reason for the safer one.
+    # The same emptiness rule in reverse. NO_COLOR is tested first because the
+    # off switch wins. CLICOLOR_FORCE is the older name for FORCE_COLOR.
     if os.environ.get("FORCE_COLOR") or os.environ.get("CLICOLOR_FORCE"):
         return True
-    # Below the variables, not above them: TERM=dumb is the terminal
-    # describing itself, and a caller who set FORCE_COLOR after reading that
-    # has overruled it deliberately. Nothing here can render ANSI on a
-    # terminal that truly cannot, but the caller is the one who knows where
-    # this output is going.
+    # Below the variables: TERM=dumb is the terminal describing itself, and a
+    # caller who set FORCE_COLOR after reading that has overruled it.
     if os.environ.get("TERM") == "dumb":
         return False
     try:
@@ -1182,11 +1171,9 @@ def gutter(label):
 
 
 def render_head(name, summary, g):
-    """Name, rule, counts line. The rule is 60 wide but never shorter than
-    the line it underlines, which `--all` can push past 60.
-
-    The name is cut to fit that 60, since a repo directory is free to be 120
-    characters long and was hanging that far past its own rule.
+    """Name, rule, counts line. The rule is 60 wide but never shorter than the
+    line it underlines (which `--all` can push past 60). The name is cut to fit
+    that 60, since a repo directory can be far longer.
     """
     # Exact match only: `git-mood-fork` and `Git-Mood` are other repos.
     if name == PROG:
@@ -1203,17 +1190,11 @@ def render_head(name, summary, g):
 def elastic(forms, room):
     """The first form that fits `room`, else the last one cut to fit.
 
-    `forms` is in the caller's order of preference, not in width order: the
-    first that fits wins, so a later form may be wider than an earlier one
-    and simply never be reached. What every form must share is the truth it
-    states; what they trade is how much of it they say.
-
-    The trailing fit() is a floor, not a plan. It returns a cut string
-    rather than a shorter sentence, and it runs only when even the last
-    form is wider than the budget - on the counts line, from a thousand
-    million million commits, which len() permits and no repository will
-    reach. It is a floor rather than an assertion because a renderer that
-    raises is worse than one that prints something short.
+    `forms` is in the caller's preference order, not width order: the first
+    that fits wins, and every form states the same truth, trading only how
+    much of it it says. The trailing fit() is a floor for when even the last
+    form overflows (a count no repository reaches) - a cut string beats a
+    renderer that raises.
     """
     for form in forms:
         if display_width(form) <= room:
@@ -1225,81 +1206,48 @@ def render_summary(commits, opts, nweeks, start, today, g):
     """One line; the rule under it is drawn to match, so width is the whole
     concern here.
 
-    Only the filter text is elastic, so it is the one that gives way. Cutting
-    it to a flat 30 characters was not enough - the rest of the line is 49
-    cells before the author has said a word, and a 30-character name pushed
-    the whole thing, and the rule under it, to 93.
-
-    With `--author`, 80 cells is a bound. It was not before: the budget was
-    computed and then not checked against two of the three forms it governs,
-    which put the line at 81 on torvalds/linux under `--all --ascii
-    --author=`.
-
-    Without it, 80 cells is a description. The unfiltered form is a count of
-    authors, with nothing elastic to give way, and it passes 80 at
-    100,000,000 commits by 10,000,000 distinct authors. Ten million commits
-    all by different people is exactly 80. Out of reach, and stated rather
-    than guarded, so this docstring does not claim a bound the branch below
-    does not hold.
+    Only the filter text is elastic, so it is the one that gives way (a flat
+    30-char cut was not enough: the rest of the line is 49 cells). With
+    `--author`, 80 cells is an enforced bound - every elastic form is measured
+    against it. Without it the line is a count of authors with nothing elastic,
+    which only passes 80 at a scale no repository reaches, so it is described
+    rather than guarded.
     """
     span = "%s %s %s" % (start.isoformat(), g["arrow"], today.isoformat())
     rest = [count(len(commits), "commit"), count(nweeks, "week"), span]
     if opts.author is None:
-        # Nothing elastic here: a count of authors is a number. See the
-        # docstring for the scale at which that stops fitting.
+        # Nothing elastic: a count of authors is a number.
         who = count(len(set(c.email.lower() for c in commits)), "author")
     else:
         # "was the flag given", not "is the value truthy": --author= is a
-        # filter to the empty string, not an absent filter.
-        #
-        # Each ladder below is in preference order and elastic() takes the
-        # first rung that fits. Every rung states the same true thing; what
-        # a narrower budget costs the reader is detail.
+        # filter to the empty string, not an absent filter. Each ladder below
+        # is in preference order; elastic() takes the first rung that fits,
+        # and every rung states the same true thing.
         room = max(0, 80 - display_width(g["sep"].join(rest))
                    - display_width(g["sep"]))
         frame = 'filtered to "%s"'
         empty = frame % ""
         if opts.author == "":
-            # The empty string is a substring of every ident, so this filter
-            # is applied and stops nothing. Announcing it without saying so
-            # left the reader hunting for the commits it had removed.
+            # The empty string matches every ident, so the filter is applied
+            # and stops nothing. The invariant every rung keeps (#134 item 1):
+            # the field always owes the reader **a noun naming it as the author
+            # filter** and **a sign the empty filter matches everything**. A
+            # narrower budget spends the verbose frame and the literal empty
+            # value, never the noun or the clarifier - which is why the noun-
+            # carrying `author "" (all)` takes over when the frame is too wide.
             #
-            # The rule every rung keeps (#134 item 1): the field always owes a
-            # cold reader **a noun naming it as the author filter** and **a sign
-            # the empty filter matches everything**. What a narrower budget
-            # spends is the verbose frame (`filtered to`) and the literal empty
-            # value, never the noun or the clarifier. The earlier ladder spent
-            # the noun first: at `room` 19 - torvalds/linux under `--all --ascii
-            # --author=` - it dropped from `filtered to "" (all)` (20, over
-            # budget) straight to `"" (matches all)` (16), a field with nothing
-            # saying it is the author filter at all. `author "" (all)` (15) fits
-            # there and keeps the noun, so it is the rung that takes over when
-            # the frame cannot be afforded.
-            #
-            # Five rungs, narrowing: the full frame, the frame with the short
-            # clarifier, then the compact noun `author` carrying value +
-            # clarifier, then the noun with the clarifier alone (the empty value
-            # reads as "" either way), then the bare noun as a floor. The floor
-            # is `author`, not `""` with a trailing space - which removes item
-            # 6's stray-space floor on this ladder as a side effect. Worst case
-            # (--ascii, window past a thousand weeks) the full frame lasts to a
-            # million commits; every rung below it holds far longer, and the two
-            # floor rungs are for nothing any repository reaches.
+            # Five rungs, narrowing: full frame, frame + short clarifier, the
+            # compact noun `author` with value + clarifier, the noun + clarifier
+            # alone, then the bare noun as a floor. The floor is `author`, not a
+            # trailing-space `""`. Every rung holds past any real repository.
             who = elastic((empty + " (matches all)", empty + " (all)",
                            'author "" (all)', "author (all)", "author"), room)
         else:
-            # Rung one is the form this branch has always produced: the name
-            # cut to what the frame leaves, floored at MARKED_FLOOR so fit()
-            # can still afford the "..." that says it cut. Unmeasured against
-            # its own budget, that floor put eighteen cells into seventeen
-            # and the line at 81 (#71). Measuring it is the whole fix, and
-            # keeping it first is why no line that fit before has moved.
-            #
-            # Rung two hands the name the twelve cells the frame was holding,
-            # so it can show more of the name than rung one - which makes
-            # this ladder the one place where a cell less of budget buys the
-            # reader more. It takes a hundred million commits to see, and
-            # the alternative was moving lines that were never broken.
+            # Rung one (always produced): the name cut to what the frame
+            # leaves, floored at MARKED_FLOOR so fit() can afford its "...".
+            # That floor must be measured against its own budget, or it put
+            # the line at 81 (#71). Rung two hands the name the frame's twelve
+            # cells, so a cell less of budget can show more of the name.
             forms = (frame % fit(opts.author,
                                  min(30, max(MARKED_FLOOR,
                                              room - display_width(empty)))),
