@@ -1422,20 +1422,14 @@ def render_mood(tags, evidence, cut, ink, g):
 # --------------------------------------------------------------------------
 
 def write(stream, text, ascii_=False):
-    """A repo or author name can hold characters the stream cannot encode.
+    """Encode-unrepresentable characters in a repo or author name are replaced,
+    not raised; under --ascii, forced to plain ASCII. A closed stream
+    (`git-mood >&-` leaves sys.stdout as None) is not a crash.
 
-    Replace them instead of raising; under --ascii force plain ASCII so the
-    whole output stays below U+0080 whatever the repo is called. A stream that
-    is closed (`git-mood >&-` leaves sys.stdout as None) is not a crash.
-
-    `ascii_` is the --ascii flag and only that flag, on both streams alike.
-    It used to be hard-coded True for every stderr write, which made the two
-    streams disagree about the same string on a run that never asked for
-    ASCII: stdout printed an author of 漢字テスト as typed while the "you
-    typed:" echo, whose whole job is to show the user their own text, printed
-    a row of "?". Reading the flag instead of assuming it keeps that fixed and
-    still lets --ascii cover stderr, which is where a path or an author value
-    the terminal cannot draw is most likely to end up.
+    `ascii_` is the --ascii flag and only that flag, on both streams alike:
+    hard-coding True for stderr made the two streams disagree about the same
+    string on a run that never asked for ASCII (the "you typed:" echo printed
+    "?" for text stdout printed as typed).
     """
     if stream is None:
         return False
@@ -1467,9 +1461,9 @@ def emit(text, ascii_=False):
 def window_words(opts, nweeks):
     """Name the window the numbers describe, so a dead end says which one.
 
-    --all reads one branch, not the repository: "the whole history" promised
-    the reader that a commit on another branch would have been counted, and
-    sent them looking for a bug when it was not.
+    --all reads one branch, not the repository, so it is named "the current
+    branch's whole history" - "the whole history" sent readers hunting for a
+    commit on another branch that was never counted.
     """
     if opts.whole:
         return "the current branch's whole history", ""
@@ -1482,9 +1476,8 @@ def build(opts, today, g, ink):
     name = os.path.basename(top.rstrip(os.sep)) or top
     if is_git_dir and name.endswith(".git") and len(name) > len(".git"):
         # A bare repo lives in `name.git`; the repository is still `name`.
-        # Only there, though: a perfectly ordinary work tree may be called
-        # `notbare.git`, and stripping the suffix off that one named a
-        # directory nobody has.
+        # Only when is_git_dir, though: an ordinary work tree called
+        # `notbare.git` keeps its name.
         name = name[:-len(".git")]
 
     def page(summary, message):
@@ -1501,9 +1494,8 @@ def build(opts, today, g, ink):
 
     commits, undated = read_commits(top)
     for note in undated_notes(undated):
-        # These belong to no week and no hour, so they cannot go on a panel.
-        # The note goes to stderr: it survives `| head -1`, and it cannot
-        # change what any number already on the chart means.
+        # These belong to no week or hour, so they go to stderr, where they
+        # survive `| head -1` and change no number on the chart.
         write(sys.stderr, note, opts.ascii_)
     if not commits:
         if undated:
@@ -1519,50 +1511,41 @@ def build(opts, today, g, ink):
         return page(render_summary([], opts, nweeks, start, today, g),
                     "no commits in %s.%s" % (where, advice))
     if opts.author is not None:
-        # The needle is tested against the whole `Name <email>` ident, the
-        # same string git log prints, so `--author "lace <ada"` can match
-        # across the boundary. --help says so rather than promising a
-        # name-or-email match this does not perform.
+        # Tested against the whole `Name <email>` ident git log prints, so
+        # `--author "lace <ada"` can match across the boundary (--help says so
+        # rather than promising a name-or-email match this does not perform).
         needle = opts.author.lower()
         commits = [c for c in commits
                    if needle in ("%s <%s>" % (c.name, c.email)).lower()]
         if not commits:
-            # A needle that matched nobody at all is not a window problem,
-            # so "try --all." on its own was pointing at the wrong knob.
-            #
-            # The needle is not echoed a second time. The header three lines
-            # up already prints it, and the two echoes were cut to different
-            # budgets: `filtered to "zzzznobody"` above `no commits by
-            # "zzzzn..."` read as two different searches, and under --all the
-            # second one printed in full so the pair disagreed by invocation.
+            # A needle that matched nobody is not purely a window problem, so
+            # "try --all." alone pointed at the wrong knob. The needle is not
+            # echoed again: the header above prints it, and two echoes cut to
+            # different budgets read as two different searches.
             fix = " try --all, or a shorter --author." if advice \
                   else " try a shorter --author."
             return page(render_summary([], opts, nweeks, start, today, g),
                         "nothing matched in %s.%s" % (where, fix))
 
     weekly = weekly_counts(commits, start, nweeks)
-    # Against `today`, not against the Sunday that ends today's week: a commit
-    # dated tomorrow is as much in the future as one dated next month, and
-    # author-local dates routinely run a day ahead across timezones.
+    # Against `today`, not the Sunday ending today's week: a commit dated
+    # tomorrow is as future as one next month, and author-local dates run a
+    # day ahead across timezones.
     clamped = sum(1 for c in commits if c.date > today)
     days = set(c.date for c in commits)
     best, best_start, best_end, current, anchor = streaks(days, today)
-    # tempo shows the future-dated commits, clamped into the newest column and
-    # disclosed there; the rhythm tags must not, because clamping piles them
-    # into one week and manufactures a peak. Four commits dated next month
-    # turned an evenly paced repo's `metronomic` into `burst-driven` claiming
-    # "9x the median busy week" - a burst in a week that has not happened.
-    # dormant already reads only non-future dates; burst-driven and metronomic
-    # now measure the same history, from a weekly count with the future left
-    # out. tempo keeps the clamped `weekly` above, so no commit vanishes from
-    # the chart - only from the verdict about weeks that have occurred.
+    # tempo shows future-dated commits clamped into the newest column; the
+    # rhythm tags must not, because clamping piles them into one week and
+    # manufactures a peak (four next-month commits turned a `metronomic` repo
+    # into `burst-driven`). So burst-driven/metronomic measure `weekly_real`,
+    # with the future left out; tempo keeps the clamped `weekly`, so no commit
+    # vanishes from the chart, only from the verdict about weeks that occurred.
     weekly_real = weekly_counts([c for c in commits if c.date <= today],
                                 start, nweeks)
-    # The dormant tag measures the gap since the last commit, so it reads the
-    # newest date that is not in the future: a single commit dated next month
-    # otherwise sets `idle` negative and silences the tag on a repo that has
-    # in fact been quiet for a year. The streaks panel below still gets the
-    # commits' own maximum - it prints those dates and says they run ahead.
+    # dormant measures the gap since the last commit, so mood() gets the
+    # newest non-future date: a lone next-month commit would otherwise make
+    # `idle` negative and silence the tag on a repo quiet for a year. streaks
+    # below still gets the commits' own maximum and says those dates run ahead.
     tags, evidence, cut = mood(
         commits, weekly_real, nweeks, current,
         max([d for d in days if d <= today] or [max(days)]), clamped, today)
@@ -1580,11 +1563,9 @@ def build(opts, today, g, ink):
 def ascii_requested(argv):
     """Is --ascii on this command line, as a flag and not as a path?
 
-    Read before parse_args(), because parse_args()'s own errors go to stderr
-    and --ascii is a promise about everything this program writes, not only
-    about the chart. Reading it during the scan would have honoured the flag
-    only when it came before the mistake. The scan stops at `--` for the same
-    reason parse_args() does: after it, `--ascii` is a directory name.
+    Read before parse_args(), since --ascii governs even parse_args()'s own
+    stderr errors (reading it during the scan would honour it only when it came
+    before the mistake). Stops at `--`, after which `--ascii` is a path.
     """
     for arg in argv:
         if arg == "--":
@@ -1597,10 +1578,9 @@ def ascii_requested(argv):
 def restore_signal(sig, handler):
     """Hand a saved disposition back, tolerating the two values that cannot be.
 
-    getsignal() returns None when the current handler was installed from C and
-    has no Python object to name; signal() cannot take None, so there is
-    nothing to restore and we leave ours in place. Off the main thread signal()
-    raises ValueError - the same guard main() uses when it installs them.
+    getsignal() returns None for a handler installed from C; signal() cannot
+    take None, so there is nothing to restore. Off the main thread signal()
+    raises ValueError - the same guard main() uses to install them.
     """
     if handler is None:
         return
@@ -1612,26 +1592,20 @@ def restore_signal(sig, handler):
 
 def main(argv):
     ascii_ = ascii_requested(argv)
-    # Before parse_args(), for the same reason ascii_requested() is read
-    # there: parse_args()'s own errors are output too.
+    # Before parse_args(), whose own errors are output too.
     globals()["ASCII_OUT"] = ascii_
-    # Hand SIGINT back to Python for the run itself. The module-level handler
-    # above exists to cover startup; from here on the interrupt semantics are
-    # the ones this program has always had - default_int_handler raises
-    # KeyboardInterrupt from the eval loop, and the guard at the bottom of
-    # this function turns it into 130. default_int_handler, not SIG_DFL: the
-    # latter would terminate the process on the spot and leave -2. The reason
-    # is in the comment on that handler; the short version is that a Python
-    # handler firing inside subprocess.Popen can wedge the process forever.
+    # Hand SIGINT back to Python for the run itself (the module-level handler
+    # covered startup only): default_int_handler raises KeyboardInterrupt,
+    # which the guard below turns into 130. Not SIG_DFL, which would terminate
+    # on the spot and leave -2 - and a Python handler firing inside
+    # subprocess.Popen can wedge the process (see the handler comment up top).
     #
-    # main() is a public entry point - `import git_mood; git_mood.main([...])`
-    # is a supported call - so these are the caller's dispositions, not ours
-    # to keep. Save them now and put them back in the finally below, or an
-    # import that runs the program once leaves default_int_handler where the
-    # caller's SIGINT handler was, and SIG_DFL where Python's SIGPIPE ignore
-    # was (which turns the caller's next broken pipe from a BrokenPipeError
-    # into a killed process). getsignal() before signal(), so what we save is
-    # the caller's and not the one we are about to install.
+    # main() is a public entry point, so these are the caller's dispositions:
+    # save them now and restore in the finally, or an import that runs the
+    # program once leaves default_int_handler where the caller's SIGINT was and
+    # SIG_DFL where Python's SIGPIPE-ignore was (which turns the caller's next
+    # broken pipe into a killed process). getsignal() before signal(), so we
+    # save the caller's and not the one we install.
     saved_sigint = signal.getsignal(signal.SIGINT)
     saved_sigpipe = (signal.getsignal(signal.SIGPIPE)
                      if hasattr(signal, "SIGPIPE") else None)
@@ -1650,22 +1624,17 @@ def main(argv):
                       Ink(color_enabled(opts)))
         emit("\n".join(lines) + "\n", opts.ascii_)
     except Usage as exc:
-        # The generic pointer steps aside for a specific one. `--author -x`
-        # printed "try: git-mood --help" as a clause on line 1 and the
-        # sentence that actually fixes the command on line 3, so the reader
-        # met the weaker answer first and the stronger one after two lines
-        # of looking. When there is no advice the tip is all there is.
-        # One decision, read twice. Testing `exc.advice` here and its
-        # width below would drop both on an advice too wide to print,
-        # leaving the reader a message, their own token, and no next step.
+        # The generic "try: --help" tip steps aside for specific advice when
+        # there is some. One decision, read twice: computed once here (and
+        # nulled if too wide to print) so the tip and the advice line below
+        # cannot both drop, leaving the reader no next step.
         advice = exc.advice if exc.advice and len(PROG) + 2 \
             + display_width(exc.advice) <= 80 else None
         tail = "; try: %s --help" % PROG if exc.tip and not advice else ""
         write(sys.stderr, "%s: %s%s\n" % (PROG, exc, tail), ascii_)
         if exc.echo is not None:
             # Quoted, because an empty value is a thing the user typed too:
-            # `--weeks=` printed "you typed:" and then a trailing space, so
-            # the one line meant to show the argument showed nothing at all.
+            # unquoted, `--weeks=` showed "you typed:" and a trailing space.
             write(sys.stderr, '%s: you typed: "%s"\n'
                   % (PROG, fit(exc.echo, 55)), ascii_)
         if advice:
