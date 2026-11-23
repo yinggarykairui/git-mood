@@ -1259,9 +1259,8 @@ def render_summary(commits, opts, nweeks, start, today, g):
 def bucket_columns(weekly, size):
     """[(first week index, weeks in the column, commits)], oldest first.
 
-    A window that does not divide evenly leaves one short column; it is put at
-    the *oldest* end, so the newest bar is never a partial bucket masquerading
-    as a decline.
+    A window that does not divide evenly leaves one short column, put at the
+    *oldest* end so the newest bar is never a partial bucket read as a decline.
     """
     lead = len(weekly) % size
     edges = ([(0, lead)] if lead else []) + [(i, size) for i in
@@ -1270,13 +1269,9 @@ def bucket_columns(weekly, size):
 
 
 def per_week(total, nweeks):
-    """One decimal, always, so the number reads the same at both scales.
-
-    Switching to two significant figures under 0.1 printed "0.038 commits/
-    week" next to "8.0 commits/week" elsewhere - two different rules on the
-    same caption line. The reason for the switch stands, though: a repo that
-    really has commits must never print 0.0. So the low end says "<0.1",
-    which is one decimal and still cannot be read as none.
+    """One decimal, always, so the number reads the same at both scales. But
+    a repo that really has commits must never print 0.0, so the low end says
+    "<0.1" - one decimal, and still not readable as none.
     """
     average = total / float(nweeks) if nweeks else 0.0
     if 0 < average < 0.05:
@@ -1291,14 +1286,10 @@ def render_tempo(weekly, start, clamped, today, ink, g):
     top = max(c[2] for c in columns)
     bar = "".join(spark_glyph(c[2], top, g) for c in columns)
 
-    # Caption the peak *column*, the bar a reader can actually point at -
-    # but only when there is one to point at. On a flat repo every week held
-    # the same count and max() picked the oldest, so a chart with no shape at
-    # all read as "something happened in February".
-    # The count is grouped, like every other four-digit number on the page:
-    # the header says "1,200 commits" and the clock says "darkest = 1,200
-    # commits", and "peak 1200" two rows between them read as a third,
-    # different number.
+    # Caption the peak *column* a reader can point at, but only when there is
+    # one: on a flat repo every column ties and max() would pick the oldest,
+    # reading as "something happened in February". The count is grouped, like
+    # every other four-digit number on the page.
     peak = "{:,}".format(top)
     tied = [c for c in columns if c[2] == top]
     unit = "week" if size == 1 else "column"
@@ -1312,17 +1303,11 @@ def render_tempo(weekly, start, clamped, today, ink, g):
         peak_line = "every %s holds %s" % (unit, peak)
     else:
         peak_line = "peak %s, tied across %s" % (peak, count(len(tied), unit))
-    # bucket_columns leaves the short column, if there is one, at the oldest
-    # end. Saying only "one column = 16 weeks" made that 9-week bar read as a
-    # lull, so the odd column is named whenever it exists.
-    #
-    # It is named without the verb "holds", which everywhere else in this
-    # program counts commits - "every week holds 3", "the busiest week holds
-    # 8.3x the median week", and "peak 4" on the very next line - so "the
-    # oldest holds 1" read as one commit under a bar that was clearly taller
-    # than that. "the leftmost (oldest)" also states, in the only place the
-    # panel had room for it, which end of the chart is the old end.
-    # Worst case 77 columns, at ten weeks a column and a five-digit rate.
+    # The short column (at the oldest end) is named whenever it exists, or
+    # "one column = 16 weeks" makes a 9-week bar read as a lull. Named without
+    # "holds", which everywhere else counts commits, so it is not read as a
+    # commit count; "leftmost (oldest)" also states which end is old. Worst
+    # case 77 columns, at ten weeks a column and a five-digit rate.
     width = count(size, "week")
     if columns and columns[0][1] != size:
         width += ", the leftmost (oldest) %d" % columns[0][1]
@@ -1332,40 +1317,26 @@ def render_tempo(weekly, start, clamped, today, ink, g):
                 % (width, g["sep"], per_week(sum(weekly), nweeks))),
         ink.dim(INDENT + peak_line),
     ]
-    # The newest bar is drawn from a span that has not finished, at full
-    # height beside bars that have, so the caption says how much of it has
-    # elapsed. Measured on the column, not on the week: at `one column = 10
-    # weeks` the newest column is 69 days of 70, which today.weekday() alone
-    # would call a fragment. The reconciliation clause - that the rate above
-    # divides by whole weeks - is the one part that gives way, and only it,
-    # when three-digit day counts would push the line past 80.
+    # The newest bar is drawn at full height from a span that has not
+    # finished, so the caption says how much has elapsed - measured on the
+    # column, not the week. The "rate divides by whole weeks" clause is the
+    # one part that gives way when day counts push the line past 80.
     newest = columns[-1]
     first_day = start + timedelta(days=7 * newest[0])
     span_days, elapsed = 7 * newest[1], (today - first_day).days + 1
     if 0 < elapsed < span_days:
-        # One shape at both scales. The bucketed form said "69 of 70 days
-        # old" and the week form said "6 days old", which is the same fact
-        # in two spellings and the shorter one is ambiguous: a week whose
-        # Monday was six days ago has six of its seven days behind it, and
-        # "6 days old" reads just as easily as "over already".
+        # One "N of M days old" shape at both scales: the bare "6 days old"
+        # week form was ambiguous (reads just as easily as "over already").
         aged = ("the newest %s is %d of %d days old"
                 % (unit, elapsed, span_days))
         whole = aged + "; the rate divides by whole weeks"
         lines.append(ink.dim(INDENT + (whole if GUTTER + display_width(whole)
                                        <= 80 else aged)))
     if clamped:
-        # Future-dated commits clamp into the newest bucket, which is rarely
-        # the peak column. Hung off the peak caption, the note claimed they
-        # were in a column that does not hold them; it gets its own line and
-        # names the column that does.
-        # "with a future date" and not "dated after today", because the
-        # streaks panel six rows down discloses the same commits and the
-        # page was opening two lines with the same five words. Both still
-        # disclose. It is not led with "the newest column" either: the
-        # caption two rows up now begins "the newest week/column is", and
-        # trading one repetition for another three rows closer is not a fix.
-        # "future date" is the phrase the dormant evidence line already uses
-        # for the same commits.
+        # Future-dated commits clamp into the newest bucket, rarely the peak
+        # column, so this gets its own line naming the column that holds them.
+        # "with a future date" (not "dated after today") so it does not echo
+        # the streaks panel's wording; it matches the dormant evidence line.
         lines.append(ink.dim(INDENT + "%s with a future date, counted in the "
                              "newest column" % count(clamped, "commit")))
     return lines
@@ -1375,22 +1346,19 @@ def render_clock(grid, ink, g):
     top = max(max(row) for row in grid)
     lines = [ink.dim((gutter("clock") + "     " + RULER).rstrip())]
     for index, day in enumerate(DAYS):
-        # Hours 00:00-05:59 carry the one accent color, so a late-night spike
-        # is visible without reading the ruler. Only cells that hold commits
-        # are tinted; tinting the empty ones paints a cyan rectangle that
-        # reads as a rendering artifact rather than an accent.
+        # Hours 00:00-05:59 carry the accent color. Only cells that hold
+        # commits are tinted; tinting empty ones paints a cyan rectangle that
+        # reads as a rendering artifact.
         cells = []
         for hour, value in enumerate(grid[index]):
             glyph = cell_glyph(value, top, g)
             cells.append(ink.accent(glyph) if hour < 6 and value else glyph)
         lines.append(ink.dim(INDENT + day + "  ") + "".join(cells))
-    # The key prints only when there is something teal on the page. Color
-    # being emitted is necessary and not sufficient: only cells that hold
-    # commits are tinted, so the `tinted` test has to be the same condition
-    # the loop above tints on. The hours keep the ruler's own wording, not
-    # a shorter one under pressure. The clause costs 15 cells in both glyph
-    # sets and drops whole rather than the line running past 80; the key it
-    # hangs off is no constant width - it grows with the count's digits.
+    # The "teal = 00-05" clause prints only when something is actually tinted
+    # (color emitted is necessary but not sufficient), so `tinted` tests the
+    # same condition the loop tints on. The clause costs 15 cells and drops
+    # whole rather than running the line - whose width grows with the count's
+    # digits - past 80.
     key = (INDENT + "one cell per hour of the week" + g["sep"]
            + "darkest = %s" % count(top, "commit"))
     clause = g["sep"] + "teal = 00-05"
@@ -1405,12 +1373,8 @@ def render_clock(grid, ink, g):
 
 def render_streaks(best, best_start, best_end, current, anchor, last_day,
                    clamped, today, ink, g):
-    """Dates here are the commits' own, never clamped into the window.
-
-    The header says the window ends today and tempo folds future-dated
-    commits into the newest column, so a streak reported in September beside
-    a header ending in August looked like three panels disagreeing. It is the
-    same disclosure tempo makes, in the panel that needs it.
+    """Dates here are the commits' own, never clamped into the window; when
+    one runs past today the panel discloses it, as tempo does for its column.
     """
     if best_start == best_end:
         longest = "longest %s, %s" % (count(best, "day"),
@@ -1425,18 +1389,14 @@ def render_streaks(best, best_start, best_end, current, anchor, last_day,
     else:
         now = "current none, last commit %s" % last_day.isoformat()
     lines = [ink.dim(gutter("streaks")) + longest, INDENT + now]
-    # The test is whether a date actually on these two lines is after today,
-    # not whether the panel is clamped. Gated on `clamped` alone it printed
-    # "these dates can pass <today>" on a panel whose every printed date was
-    # today or earlier; a future-dated commit outside every streak reported
-    # here is tempo's disclosure to make, not this one's.
+    # The test is whether a date actually printed on these two lines is after
+    # today, not just whether the panel is clamped: a future commit outside
+    # every streak shown here is tempo's disclosure to make, not this one's.
     shown = [d for d in (best_start, best_end,
                          anchor if current else last_day) if d is not None]
     if clamped and any(d > today for d in shown):
-        # The date is spelled out rather than called "it". The nearest thing
-        # for a pronoun to attach to was "today", which made the sentence say
-        # that dates after today can run ahead of today; the date it actually
-        # means is the one ending the header, five lines up and never named.
+        # The date is spelled out, not called "it": a pronoun would attach to
+        # "today" and say dates after today can run ahead of today.
         lines.append(ink.dim(INDENT + "%s dated after today; these dates can "
                              "pass %s" % (count(clamped, "commit"),
                                           today.isoformat())))
@@ -1448,13 +1408,9 @@ def render_mood(tags, evidence, cut, ink, g):
     than three of either, whatever `cut` says was left off."""
     named = g["sep"].join(ink.bold(tag) for tag in tags)
     if cut:
-        # A plain space, not the tag separator: " . +2 more" sitting in the
-        # same slot the separator marks would read as a fourth tag, which is
-        # the confusion this suffix exists to end. The brackets do that work
-        # with no styling at all: piped, redirected or under --no-color the
-        # dim is gone and a bare "weekend-coded +1 more" parses as one long
-        # tag name. Dim is still there when color is on, for the same reason
-        # the brackets are - it is a note about the list, not a member of it.
+        # A plain space, not the tag separator (which would read as a fourth
+        # tag), and brackets so that under --no-color "(+1 more)" still parses
+        # as a note about the list, not a member of it.
         named += " " + ink.dim("(+%d more)" % cut)
     lines = [ink.dim(gutter("mood")) + named]
     lines.extend(INDENT + line for line in evidence)
