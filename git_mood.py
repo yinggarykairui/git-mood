@@ -3,30 +3,25 @@
 
 One file, standard library only. One `git log` call in, four panels out.
 Stat functions take commits and return numbers; render functions take those
-numbers and return strings. The summary and tempo renderers are the two that
-also count - authors, bucket sums, the per-week rate - and every threshold in
-the program is decided in mood(), before a single string is built.
+numbers and return strings. Every threshold is decided in mood(), before a
+single string is built.
 """
 
-# These two imports are out of alphabetical order on purpose, and the rest of
-# the file's imports follow below the handler. A SIGINT can only be caught
-# once `signal` and `sys` are in hand, and every import that runs before the
-# disposition is set is time this program spends uncatchable: measured here,
-# a Ctrl-C landing 10-20 ms in - inside `import unicodedata` and `import
-# subprocess`, the two slow ones - printed a raw traceback and exited -2.
+# signal/sys first and out of alphabetical order: a SIGINT can only be caught
+# once they are in hand, and every import before the disposition is set is
+# uncatchable. A measured Ctrl-C landing 10-20 ms in (inside the slow
+# `unicodedata`/`subprocess` imports) printed a raw traceback and exited -2.
+# The rest of the imports follow below the handler.
 import signal
 import sys
 
-# Exit codes are part of the CLI contract: 0 a chart or a clean "nothing to
-# chart", 1 environment, 2 usage, 130 Ctrl-C. The 130 is promised from the
-# moment the handler below is installed - not from the top of this file, and
-# not to the very last instant of the process. Before the handler, Python
-# answers a Ctrl-C itself and leaves -2: the interpreter's own startup, the
-# compile of this file, and the `import signal` on line 17 are all in that
-# window. After the run, interpreter finalization restores the default
-# disposition, so a Ctrl-C arriving in the last moments can leave -2 with the
-# whole chart already on stdout. Both were measured, not assumed; the bounds
-# are in the comment on the handler.
+# CLI exit-code contract: 0 a chart or a clean "nothing to chart",
+# 1 environment, 2 usage, 130 Ctrl-C. 130 holds only from when the handler
+# below is installed to just before the process ends. Outside that window -
+# interpreter startup, this file's compile, `import signal`, and interpreter
+# finalization after the run (a Ctrl-C can then leave -2 with the whole chart
+# already on stdout) - Python answers the signal itself and leaves -2.
+# Measured, not assumed.
 EXIT_ENV = 1
 EXIT_USAGE = 2
 EXIT_INTERRUPT = 130
@@ -37,17 +32,15 @@ def interrupted(_signum, _frame):
     sys.exit(EXIT_INTERRUPT)
 
 
-# Installed only when this file is the program. Unconditionally, `import
-# git_mood` replaces an importer's own SIGINT disposition and its
-# `except KeyboardInterrupt` stops running; off the main thread
-# signal.signal() raises ValueError, which no import should fail over.
+# Installed only as the program: `import git_mood` must not replace an
+# importer's own SIGINT disposition. Off the main thread signal.signal()
+# raises ValueError, which no import should fail over.
 #
-# main() hands the signal back as its first act, because a Python handler
-# left in place runs a Python frame at an arbitrary bytecode boundary, and
-# one landing inside subprocess.Popen can leave `_waitpid_lock` held by the
-# thread that then blocks on it - a wedge with no exit at all. It covers
-# the import window only, whose bounds EXIT_INTERRUPT above states; the
-# measurements are in the factory hub the README's footer links.
+# main() hands the signal back as its first act, because a Python handler left
+# in place runs a Python frame at an arbitrary bytecode boundary, and one
+# landing inside subprocess.Popen can leave `_waitpid_lock` held by the thread
+# that then blocks on it - a wedge with no exit at all. This covers the import
+# window only.
 if __name__ == "__main__":
     try:
         signal.signal(signal.SIGINT, interrupted)
