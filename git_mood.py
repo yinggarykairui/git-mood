@@ -88,9 +88,9 @@ notes:
   Color order and tag table: https://github.com/yinggarykairui/git-mood#readme
 """
 
-# HELP is the one string that never goes through the --ascii ramp, so it
-# has to be ASCII on its own: an em dash in it printed as "?" on a stream
-# that could not encode one, mid-sentence, in the text explaining the tags.
+# HELP is the one string that never goes through the --ascii ramp, so it must
+# be ASCII on its own: a non-ASCII character printed as "?" on a stream that
+# could not encode it, mid-sentence.
 assert HELP.encode("ascii")
 
 MAX_WEEKS = 520
@@ -111,13 +111,9 @@ GLYPHS = {
     "dash": "—",
 }
 ASCII_GLYPHS = {
-    # The ramp climbs: the dot is the empty week - the same low-ink mark
-    # the punch card uses for an empty cell - and the baseline stroke is
-    # the shortest bar. The other way round draws the picture upside down.
-    #
-    # This string must stay exactly as long as GLYPHS["spark"]. ramp_glyph()
-    # picks a step by index, so a different length would have --ascii and
-    # the default disagree about the same week.
+    # The ramp climbs low-ink to high so it is not drawn upside down, and must
+    # stay exactly as long as GLYPHS["spark"]: ramp_glyph() picks a step by
+    # index, so a different length has --ascii and the default disagree.
     "spark": "_:-=+*%#",
     "spark_zero": ".",
     "grid_zero": ".",
@@ -135,14 +131,12 @@ Options = namedtuple("Options", "path weeks whole author ascii_ color given")
 class Usage(Exception):
     """Bad command line. Exit 2, with a pointer at --help.
 
-    Three parts on three lines, because only one of them is elastic: the
-    message says what is wrong and never holds user text, `echo` is the
-    token the user typed, and `advice` is the fix when one exists. Folding
-    the token into the message meant every message had its own budget for
-    it, and a 40-character argument pushed the one line to 155 cells.
+    Three separate fields so only `echo` holds user text and only it needs a
+    width budget: `message` says what is wrong, `echo` is the token the user
+    typed, `advice` is the fix when one exists.
 
-    `tip` is the "try: git-mood --help" tail. One message turns it off: the
-    one that refuses to print the help the user just asked for.
+    `tip` is the "try: git-mood --help" tail; the one message that refuses to
+    print the help the user just asked for turns it off.
     """
 
     def __init__(self, message, echo=None, advice=None, tip=True):
