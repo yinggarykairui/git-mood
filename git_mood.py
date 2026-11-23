@@ -644,19 +644,10 @@ def run_git(args, timeout=120):
 def git_says(done):
     """git's own first line of complaint, or "" when it said nothing.
 
-    Only the first line: the rest of a git error is usually a worked example
-    indented under it, and this program's errors are one line each.
-
-    Raw. It used to trim to 120 characters, which is both too long for the
-    line it lands on and measured in the wrong unit; the caller wraps it in
-    env_line() with the prefix it is about to print, so the flatten, the
-    tame and the trim all happen once, there, against the real budget.
-
-    Taming it here as well was harmless while a second pass only replaced
-    "?" with "?". It stopped being harmless when --ascii began escaping:
-    the first pass wrote `\u00e9` and the second escaped its backslash, so
-    git's own sentence reached the reader as `\\u00e9` - the escape that
-    means a literal six-character name.
+    Only the first line, since this program's errors are one line each. Raw,
+    not tamed or trimmed: the caller wraps it in env_line() where flatten,
+    tame and trim happen once against the real budget. Taming here too
+    double-escaped under --ascii (`\u00e9` -> `\\u00e9`).
     """
     for line in done.stderr.decode("utf-8", "replace").splitlines():
         if line.strip():
@@ -667,10 +658,9 @@ def git_says(done):
 def check_directory(path, label=None):
     """Say which of the three ways a path can fail actually happened.
 
-    `label` is how the path is named in the message. It differs from `path`
-    in exactly one case: no path argument was given, and quoting "." back at
-    a reader who typed nothing reads as an echo of their own text when every
-    other message on this stream is one.
+    `label` is how the path is named in the message; it differs from `path`
+    only when no path argument was given, where quoting "." back at a reader
+    who typed nothing would read as an echo of their own text.
     """
     if label is None:
         label = path
@@ -696,11 +686,9 @@ def check_directory(path, label=None):
 def git_path(done):
     """git's stdout as a path, or "" - never something exec() will reject.
 
-    A `git` on PATH that answers `rev-parse --show-toplevel` with a NUL byte
-    in it got that byte handed straight back to the next subprocess call,
-    where it surfaced as `ValueError: embedded null byte` and a traceback.
-    --help names `git` on PATH as a requirement, so a shimmed or wrapped git
-    is a documented failure surface and owes a sentence, not a stack.
+    A NUL byte in git's answer, handed to the next subprocess call, surfaced
+    as `ValueError: embedded null byte` and a traceback; a shimmed or wrapped
+    git is a documented failure surface and owes a sentence, not a stack.
     """
     text = done.stdout.decode("utf-8", "replace").strip()
     if "\x00" in text:
@@ -713,9 +701,8 @@ def resolve_repo(path, label=None):
 
     A bare repo has no work tree, so --show-toplevel fails there; fall back to
     the git directory itself rather than calling it "not a repository". The
-    second element is True only in that fallback, because it is the only case
-    where a trailing `.git` is part of the repository's plumbing rather than
-    part of a directory name the user chose.
+    second element is True only in that fallback - the only case where a
+    trailing `.git` is plumbing rather than part of a chosen directory name.
     """
     if label is None:
         label = path
@@ -727,20 +714,17 @@ def resolve_repo(path, label=None):
             return top, False
     done = run_git(["-C", path, "rev-parse", "--git-dir"])
     if done.returncode != 0:
-        # git's own sentence carries the reason - a directory somebody else
-        # owns, a $GIT_DIR pointing at nothing - so it is passed through
-        # instead of being relabelled. When git's own verdict already is
-        # "not a git repository" there is nothing to add, so this program
-        # says that in its own voice and names the path it was handed.
+        # git's own sentence carries the reason (a directory someone else
+        # owns, a $GIT_DIR pointing at nothing), so it is passed through. Only
+        # when git itself says "not a git repository" does this program say so
+        # in its own voice and name the path.
         reason = git_says(done)
         if reason and "not a git repository" not in reason.lower():
             raise EnvProblem(env_line("git says: ", reason))
         if not reason:
-            # git failing without a word is not evidence about the
-            # directory. A `git` shim exiting 77 in silence was reported as
-            # `not a git repository` against a directory that is one, which
-            # sends the reader to fix the wrong thing; the exit code is the
-            # only fact in hand, so it is the one printed.
+            # git failing silently is not evidence about the directory (a
+            # shim exiting 77 reported "not a git repository" against one that
+            # is), so the exit code, the only fact in hand, is what prints.
             raise EnvProblem("git rev-parse exited %d and said nothing"
                              % done.returncode)
         raise EnvProblem(env_line("not a git repository: ", label))
@@ -761,9 +745,9 @@ def has_commits(top):
 def commits_elsewhere(top):
     """Is anything committed on some other ref while HEAD points nowhere?
 
-    `git switch -c` before the first commit leaves HEAD unborn on the new
-    branch while main still holds the history, and calling that repository
-    "no commits yet" contradicts its own `git log main`.
+    `git switch -c` before the first commit leaves HEAD unborn while main
+    still holds history; calling that "no commits yet" contradicts `git log
+    main`.
     """
     done = run_git(["-C", top, "rev-list", "-n", "1", "--all"])
     return done.returncode == 0 and bool(done.stdout.strip())
@@ -772,17 +756,14 @@ def commits_elsewhere(top):
 def read_commits(top):
     """The one `git log` call. Bytes in, (Commit list, undateable count) out.
 
-    `-z` makes git separate the records with NUL. git refuses to write a
-    commit object holding a NUL in the author ident (`fsck` calls it
-    nulInHeader, and fast-import stops at the first one), so a record boundary
-    is the one thing in this stream an author name cannot counterfeit. The
-    field separators inside a record still can, which is why the name is
-    reassembled from the middle fields rather than trusted to be one.
+    `-z` separates records with NUL, and git refuses a NUL in the author ident
+    (fsck's nulInHeader), so a record boundary is the one thing an author name
+    cannot counterfeit; the field separators inside a record still can, so the
+    name is reassembled from the middle fields.
 
-    No `--since` prefilter: it cuts on *committer* date, so a rebased or
-    grafted commit whose author date is inside the window would vanish from a
-    windowed run but show up under --all. The author-date filter in build() is
-    the only authority on membership, so every panel counts the same commits.
+    No `--since` prefilter: it cuts on *committer* date, so an author-dated-
+    in-window commit could vanish from a windowed run but show under --all.
+    The author-date filter in build() is the only authority on membership.
     """
     args = ["-C", top, "log", "-z", "--pretty=format:%aI%x1f%aN%x1f%aE"]
     done = run_git(args)
@@ -808,27 +789,20 @@ def parse_log(text):
     """One NUL-separated record in, one Commit out. No rejoining.
 
     Returns (commits, undated), where `undated` holds the raw author stamp of
-    every record that could not be placed on a calendar. There are two ways
-    in, and they are different facts about the repository, so the strings are
-    kept rather than tallied: git leaves its own placeholder "%aI" in place
-    when it cannot read the author timestamp at all (a negative one, from
-    before 1970, does this), and an author timestamp far in the future renders
-    fine as "3170843-11-07T09:46:39+00:00", a year no calendar covers. Either
-    way the record belongs to no week and no hour, so it is set aside and the
-    caller says so; dropping it in silence once turned a repo into "no commits
-    yet".
+    every record that could not be placed on a calendar. The strings are kept,
+    not tallied, because there are two distinct causes: git's placeholder
+    "%aI" (an author timestamp it could not read, e.g. a pre-1970 negative
+    one) and a far-future timestamp that renders to a year no calendar covers.
+    Either belongs to no week or hour; dropping it silently once turned a repo
+    into "no commits yet".
 
-    Because the record boundary is a NUL (see read_commits) every record is
-    exactly one commit, so field 0 is always git's own %aI and no author name
-    can invent a commit or erase one. A name holding \\x1f still splits into
-    extra fields; they are joined back into the name by taking the first field
-    as the stamp and the last as the email, so at worst an absurd name blurs
-    into the email it is printed beside.
-
-    A newline is treated as a record boundary too. That is what git uses when
-    `-z` is not honored, and git refuses an author ident containing one
-    (`missingEmail` from fsck, "Missing < in ident string" from fast-import),
-    so it can only ever be git's own separator and never part of a name.
+    Because the record boundary is a NUL (see read_commits), field 0 is always
+    git's own %aI and no author name can invent or erase a commit. A name
+    holding \\x1f splits into extra fields; they rejoin by taking field 0 as
+    the stamp and the last as the email, so at worst a name blurs into its
+    email. A newline is a record boundary too: git uses it when `-z` is not
+    honored and refuses it inside an author ident, so it is never part of a
+    name.
     """
     commits, undated = [], []
     for record in text.replace("\n", "\x00").split("\x00"):
@@ -845,13 +819,9 @@ def parse_log(text):
 
 
 def undated_notes(undated):
-    """One line per reason a commit could not be dated, naming the real one.
-
-    The old single line said the dates were ones "git could not render",
-    which is wrong twice over: git renders %aI for an author timestamp of
-    99999999999999 quite happily (it prints the year 3170843) and it is this
-    program that refuses it, and "render" reads as "draw" to anyone who has
-    not read the source. Each cause now says what actually happened.
+    """One line per reason a commit could not be dated, naming the real one:
+    a timestamp git itself could not read, versus one git read fine but no
+    calendar covers (this program, not git, refuses it).
     """
     unread = sum(1 for stamp in undated if stamp.strip() == "%aI")
     unreal = len(undated) - unread
@@ -866,12 +836,8 @@ def undated_notes(undated):
 
 
 def undated_reason(undated):
-    """Why there is nothing to chart, in the same terms as those notes.
-
-    One sentence used to cover both causes: "none with a real calendar date"
-    was printed even when every one of them had been skipped because git
-    itself could not read the timestamp - the stderr note two lines above
-    naming one cause while stdout named the other.
+    """Why there is nothing to chart, in the same terms as those notes, so
+    stdout and the stderr note above do not name different causes.
     """
     unread = sum(1 for stamp in undated if stamp.strip() == "%aI")
     here = "%s here, " % count(len(undated), "commit")
