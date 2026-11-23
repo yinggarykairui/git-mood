@@ -282,6 +282,9 @@ def oneline(text, limit=60):
 # Below four cells fit() stops paying for its "..." and cuts silently, so a
 # budget under this floor buys a *wrong* string, not a short one. fit() and
 # render_summary (which sizes a budget down toward nothing) both read it.
+# Below four cells fit() cuts silently instead of paying for its "...", so a
+# budget under this floor buys a *wrong* string. render_summary is the caller
+# that sizes a budget down toward it; render_head's 46-cell budget never nears.
 MARKED_FLOOR = 4
 
 
@@ -1210,7 +1213,8 @@ def render_summary(commits, opts, nweeks, start, today, g):
     30-char cut was not enough: the rest of the line is 49 cells). With
     `--author`, 80 cells is an enforced bound - every elastic form is measured
     against it. Without it the line is a count of authors with nothing elastic,
-    which only passes 80 at a scale no repository reaches, so it is described
+    which passes 80 only at 100,000,000 commits by 10,000,000 distinct
+    authors (exactly 80) - a scale no repository reaches, so it is described
     rather than guarded.
     """
     span = "%s %s %s" % (start.isoformat(), g["arrow"], today.isoformat())
