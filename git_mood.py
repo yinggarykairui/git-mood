@@ -339,9 +339,9 @@ def env_line(prefix, tail, tail2=None, joiner=": "):
                                         max(room - display_width(head), 0))
 
 
-# Everything a POSIX shell reads as more than text. Advice that pastes a
-# value holding one of these is a command line the reader cannot paste back:
-# `--author=--a$(id)` looks like a search and runs `id`.
+# Everything a POSIX shell reads as more than text. Advice that pastes a value
+# holding one is a line the reader cannot paste back: `--author=--a$(id)` runs
+# `id`.
 SHELL_META = frozenset("$`\"'\\;&|<>(){}[]*?~!#")
 
 
@@ -354,23 +354,17 @@ def take_value(flag, inline, argv, i, literal=""):
     """Return (value, next index) for both `--flag=v` and `--flag v`.
 
     `flag` is the token the user actually typed, so `-w` never reports itself
-    as `--weeks`. A following flag is refused rather than eaten: swallowing it
-    used to produce advice ("try --all") naming the flag it had just consumed.
+    as `--weeks`. A following flag is refused rather than eaten (swallowing it
+    produced advice naming the flag it had just consumed).
 
-    `literal` is what the flag would do with a value shaped like a flag, if
-    anything. `--weeks --all` used to advise `--weeks=--all`, which fails on
-    the next line with `got "--all"`; advice that does not work is worse than
-    none, so only the flags that can take such a value offer it.
+    `literal` is what the flag would do with a flag-shaped value, if anything;
+    only flags that can take one offer the `--flag=value` advice, since
+    `--weeks=--all` is advice that fails on the next line.
 
-    The advice quotes the value whole or falls back to the generic form. Cut
-    to fit, it printed a command line that is not the one it was advising -
-    `--author=--xxx...` searches for a literal ellipsis - so a value that
-    will not fit, or that needs quoting to survive a shell, is named as
-    VALUE rather than pasted in.
-
-    "Needs quoting" is SHELL_META, not whitespace. Testing only for spaces
-    let `--author=--a$(id)` out as a copy-pasteable line, and pasting it
-    runs `id` - the exact hazard the quote-it-whole rule was written for.
+    The advice quotes the value whole, but a value that will not fit or that
+    needs quoting to survive a shell is named VALUE rather than pasted in: a
+    cut value advises a different command, and "needs quoting" is SHELL_META
+    (testing only spaces let `--author=--a$(id)` out as a pasteable line).
     """
     if inline is not None:
         return inline, i
@@ -384,22 +378,17 @@ def take_value(flag, inline, argv, i, literal=""):
                 and len(PROG) + 2 + display_width(advice) <= 80):
             # Still say which form works; only the value is withheld.
             advice = "use the %s=VALUE form to %s" % (flag, literal)
-        # What was detected is the shape, not the identity: `-a b` and
-        # `-中中中` are refused for beginning with `-`, and calling either
-        # of them "a flag" told the user their own value was something it
-        # is not. The echo line below shows it; this line says why it was
-        # not taken.
+        # The shape was detected, not the identity: `-a b` and `-中中中` are
+        # refused for beginning with `-`. The message says why it was not
+        # taken; the echo line below shows the value.
         raise Usage("%s needs a value; that one begins with -" % flag,
                     echo=value, advice=advice if literal else None)
     return argv[i], i + 1
 
 
-# int() accepts more than "an integer from 1 to 520" describes: `1_0` is
-# ten, an Arabic-Indic four is four, a fullwidth two-six is twenty-six, and
-# surrounding whitespace is skipped - so command lines nobody would call
-# the same charted the same window, while the plainly-numeric `3.0` was
-# refused. The CLI's contract is the digits it prints, so that is what it
-# reads.
+# int() accepts more than "an integer from 1 to 520" describes: `1_0`, Unicode
+# digits, and surrounding whitespace all pass, so the CLI reads only the ASCII
+# digits it documents.
 DIGITS = frozenset("0123456789")
 
 
@@ -409,9 +398,8 @@ def integer_shaped(raw):
 
 
 def parse_weeks(raw, flag="--weeks"):
-    """`flag` is the token the user typed. take_value() already refuses to
-    report `-w` as `--weeks`, and these two messages were the place the
-    same flag still named itself two different ways."""
+    """`flag` is the token the user typed, so `-w` is never reported as
+    `--weeks`."""
     try:
         if not integer_shaped(raw):
             raise ValueError(raw)
@@ -427,9 +415,8 @@ def parse_weeks(raw, flag="--weeks"):
 SHORT_FLAGS = "ahV"          # short options that take no value
 SHORT_VALUED = "w"           # short options that take one
 
-# Every long option the scan accepts, spelled as typed. One list in two
-# places: in the scan and not here is never suggested, here and not in the
-# scan is suggested and then rejected.
+# Every long option the scan accepts, spelled as typed. Must match the scan:
+# here but not in the scan is suggested and then rejected, and vice versa.
 LONG_OPTIONS = ("--weeks", "--all", "--author", "--ascii", "--color",
                 "--no-color", "--help", "--version")
 
@@ -437,44 +424,29 @@ LONG_OPTIONS = ("--weeks", "--all", "--author", "--ascii", "--color",
 def nearest_option(flag):
     """The long option `flag` is a near miss for, or None.
 
-    Two stages. A prefix test first: a typed stem that is a non-empty prefix
-    of exactly one option stem is that option, so the one-dash-too-many
-    slips difflib scored under the cutoff (`--w`, `--h`, `--we`, `--co`) are
-    advised again. An ambiguous prefix (`--a`: all, author, ascii) names no
-    single answer and falls through - the same "report rather than guess"
-    rule a difflib tie takes, below.
+    Two stages. Prefix test first: a typed stem that is a non-empty prefix of
+    exactly one option stem is that option (so `--w`, `--we`, `--co` are
+    advised); an ambiguous prefix (`--a`: all, author, ascii) falls through,
+    "report rather than guess" like a difflib tie below.
 
-    Then difflib decides, at n=2 and cutoff=0.6, and this function does not
-    second-guess the ratio it computed - it only asks difflib for the same
-    two candidates' scores back, so there is one similarity rule here and
-    not two.
+    Then difflib decides, at n=2 and cutoff=0.6. This function does not
+    second-guess that ratio - it asks difflib for the same candidates' scores
+    back, so there is one similarity rule, not two.
 
-    The typed stem is case-folded before either stage. --WEEKS is the
-    commonest near-miss class and scored 0.0 against `weeks` while --Weeks
-    scored 0.8, so an all-caps flag got the `; try: git-mood --help` tail
-    where its mixed-case twin got advice; one .lower() closes the whole
-    class. The suggestion keeps its canonical case - it is read back out of
-    LONG_OPTIONS, never echoed from the typed token.
+    The typed stem is case-folded first (--WEEKS scored 0.0 against `weeks`
+    where --Weeks scored 0.8); the suggestion keeps its canonical case, read
+    from LONG_OPTIONS. The leading `--` is dropped on both sides before
+    scoring: it is shared by every pair, and leaving it in paid a ratio with
+    nothing to do with the word (`--since` scored 0.625 against `--version`),
+    offering a confident wrong answer in place of the `--help` tail.
 
-    The leading `--` is dropped before scoring, on both sides. It is two
-    characters every candidate shares with every typed flag - the call
-    site only reaches here for a token that starts with one - so leaving
-    it in pays a ratio that has nothing to do with the word: `--since`
-    scored 0.625 against `--version` and `--days` 0.615 against `--ascii`,
-    and both were offered - a confident wrong answer, in place of the
-    `; try: git-mood --help` tail that advice replaces. On the stems both
-    fall under the cutoff and the tail comes back, while every real
-    misspelling still lands.
+    Two candidates tied at the top score get no answer: naming one of two
+    equally close options is a guess.
 
-    Two candidates tied at the top score get no answer. parse_args reports
-    rather than guesses, and naming one of two equally close options is a
-    guess; the reader still has --help, which is one line further down.
-
-    difflib is imported past the prefix test, not at the top of the file.
-    It pulls in `re` for about 7 ms against a ~26 ms cold start, on a path
-    almost no run takes, and every module-level import widens the window in
-    which a Ctrl-C is answered by the interpreter instead of by this
-    program. The prefix path does not need it at all.
+    difflib is imported past the prefix test, not at module level: it pulls in
+    `re` (~7 ms of a ~26 ms cold start) on a path almost no run takes, and
+    every module-level import widens the window in which a Ctrl-C is answered
+    by the interpreter, not this program.
     """
     stems = [option[2:] for option in LONG_OPTIONS]
     stem = flag[2:].lower()
@@ -488,8 +460,8 @@ def nearest_option(flag):
     if not near:
         return None
     if len(near) == 2:
-        # Scored as get_close_matches scored them - candidate seq1, typed
-        # seq2. The other order is a different number.
+        # Candidate as seq1, typed as seq2, matching get_close_matches; the
+        # other order is a different number.
         scorer = difflib.SequenceMatcher(b=stem)
         scorer.set_seq1(near[0])
         best = scorer.ratio()
@@ -502,32 +474,27 @@ def nearest_option(flag):
 def short_option_problem(arg):
     """(message, kwargs) for a `-...` token no branch in the scan claimed.
 
-    Clustering is tested first: every character of `-wa` is a flag this
-    program has, and calling that an attached value because it starts with
-    the one short option that takes one answers a question nobody asked.
-    `-w8` reaches the second test because `8` is no flag.
+    Clustering is tested first: every char of `-wa` is a flag this program
+    has, so it is named a cluster, not an attached value. `-w8` reaches the
+    second test because `8` is no flag.
     """
     body = arg[1:]
     if arg[1] == "-" or "=" in arg:
         return "unknown option", {"echo": arg}
     if all(ch in SHORT_FLAGS + SHORT_VALUED for ch in body):
-        # The advice is a command line, so it has to be one that works.
-        # `-wa` split left to right is `-w -a`, and `-w` then eats the flag
-        # and refuses it. The valued options go last instead, each shown
-        # with the value it needs.
+        # The advice is a command line, so it has to work: `-wa` split in
+        # order is `-w -a`, where `-w` eats and refuses `-a`. Valued options
+        # go last instead, each shown with the value it needs.
         rewrite = " ".join(["-" + ch for ch in body if ch in SHORT_FLAGS]
                            + ["-%s N" % ch for ch in body
                               if ch in SHORT_VALUED])
         advice = "write them separately: %s" % rewrite
-        # The enumeration stops earning its place long before it overhangs:
-        # `-aaaa...` printed a 146-cell line listing `-a` thirty-eight
-        # times. Cutting it would print a command line that is not the one
-        # being advised, so past the budget it is dropped whole.
+        # Past the budget the enumeration is dropped whole, not cut: a cut
+        # command line is not the one being advised (`-aaaa...` listed `-a`
+        # thirty-eight times, 146 cells).
         if len(PROG) + 2 + display_width(advice) > 80:
-            # The fallback is held to the same test as the form it
-            # replaces: "one dash each" alone is not a runnable
-            # instruction for a cluster holding -w, which still needs its
-            # value.
+            # The fallback still has to be runnable: "one dash each" alone is
+            # not enough for a cluster holding -w, which needs its value.
             advice = ("write them separately, one dash each, each -%s with "
                       "its own N" % SHORT_VALUED[0]
                       if any(ch in SHORT_VALUED for ch in body)
@@ -535,9 +502,8 @@ def short_option_problem(arg):
         return ("short options cannot be combined",
                 {"echo": arg, "advice": advice})
     if body[0] in SHORT_VALUED:
-        # Not "takes its value as a separate argument": `-w=8` is accepted
-        # and charts eight weeks. What `-w8` is missing is the = or the
-        # space, which is what the two forms below show.
+        # `-w=8` is accepted; what `-w8` is missing is the = or the space,
+        # which the two forms below show.
         return ("-%s does not take an attached value" % body[0],
                 {"echo": arg,
                  "advice": "write it as -%s N or -%s=N" % (body[0], body[0])})
