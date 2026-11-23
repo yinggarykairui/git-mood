@@ -884,15 +884,10 @@ def punch_card(commits):
 def nearer(new, old, today):
     """Is `new` the better date to report a tied streak at?
 
-    Both are commit dates, which are the authors' own and can run past
-    today; the panel says so when they do. Between two ties, the one
-    nearest what the rest of the page is talking about wins: a date that
-    has happened beats one that has not, later beats earlier among dates
-    that have, and among dates that have all not happened yet the earliest
-    is the least far past the window the header printed. Preferring the
-    later one there sent a repo whose only two commits are dated next week
-    and next month to the month, which is the disagreement this function
-    exists to shrink.
+    Both are the authors' own commit dates and can run past today. The
+    tie-break: a date that has happened beats one that has not; later beats
+    earlier among dates that have; among all-future dates the earliest (least
+    far past the window the header printed) wins.
     """
     if old is None:
         return True
@@ -911,16 +906,11 @@ def streaks(days, today):
             run += 1
         else:
             run, run_start = 1, day
-        # On a repo of scattered single days every streak ties at one, and
-        # keeping the first put `longest 1 day, 2007-04-14` directly above
-        # `current 1 day, through <today>` - two panels reporting the same
-        # length at dates years apart, which reads as a data error rather
-        # than as the tie it is. So a tie moves the report forward.
-        #
-        # Not simply to the last one, though: a plain `>=` handed the title
-        # to a commit dated 2030 on a repo whose header two panels up says
-        # the window ends today, which is a worse disagreement than the one
-        # it was fixing. nearer() prefers a date that has happened.
+        # On scattered single days every streak ties at one; a tie moves the
+        # report forward (keeping the first put two panels years apart at the
+        # same length). Not simply to the last, though - a plain `>=` handed
+        # the title to a 2030 commit against a window ending today, so
+        # nearer() prefers a date that has happened.
         if run > best or (run == best and nearer(day, best_end, today)):
             best, best_start, best_end = run, run_start, day
         prev = day
@@ -945,14 +935,10 @@ def share(part, total):
 def pct(value):
     """A whole percent for reading that never contradicts the chart.
 
-    Rounding alone printed "100%" for 200 of 201 commits while the punch card
-    three lines above showed the odd one lit, so the two ends are held back:
-    100 is reserved for "all of them" and 0 for "none of them". Between those,
-    the nearest whole percent. A tag fires on the exact measurement and never
-    on this number, and for every threshold in this program a tag that fires
-    never prints a percent below its own line, so nothing has to be nudged.
-    The converse does not hold and does not need to: 49.5% prints as "50"
-    and does not fire, but a tag that does not fire prints no line at all.
+    100 is reserved for "all of them" and 0 for "none of them" (rounding alone
+    printed "100%" for 200 of 201 while the punch card showed the odd one
+    lit); between them, the nearest whole percent. Tags fire on the exact
+    measurement, never on this number, so nothing has to be nudged.
     """
     shown = int(round(value))
     if shown >= 100 and value < 100:
@@ -999,11 +985,10 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
                        if c.weekday < 5 and 9 <= c.hour < 18), total)
     evening = share(sum(1 for c in commits if 18 <= c.hour < 24), total)
 
-    # What an evenly spread history would already put in each window: the
-    # number every window tag's line has to beat to mean anything. It is a
-    # constant of the window and not of the data, so it is derived from the
-    # window's own size through the same share()/pct() pair the measurements
-    # go through - a printed "baseline" cannot drift from the hours it counts.
+    # What an evenly spread history already puts in each window - the number
+    # a window tag's line must beat. Derived from the window's own size
+    # through the same share()/pct() pair, so a printed baseline cannot drift
+    # from the hours it counts.
     night_baseline = pct(share(6, 24))            # 6 of 24 hours -> 25.0
     evening_baseline = pct(share(6, 24))          # 6 of 24 hours -> 25.0
     weekend_baseline = pct(share(2, 7))           # 2 of 7 days   -> 28.6
@@ -1011,31 +996,20 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
     covered = share(len(nonempty), nweeks)
     idle = (today - last_day).days
 
-    # A window tag states a distribution, and a distribution over too few
-    # commits is noise: at n=2, "nocturnal" (>=50% before 06:00) fires 44% of
-    # the time on commits scattered at random - above the 25% baseline it
-    # prints beside itself. burst-driven and metronomic already gate on >=4
-    # weeks; the four hour/day window tags gated on nothing and fired on any
-    # quiet repo through `--weeks 1`. They now need a minimum commit count,
-    # set where each one's false-positive rate under the even-spread null
-    # stays below 1% for every n at or above it. The binding pair are the two
-    # 50%-line tags, nocturnal and after-hours (p=0.25): 21. weekend-coded (16)
-    # and nine-to-five (12) reach 1% sooner and sit safely inside one gate.
+    # A distribution over too few commits is noise (at n=2 "nocturnal" fires
+    # 44% of the time on random commits). The four hour/day window tags need a
+    # minimum commit count, set where each one's false-positive rate under the
+    # even-spread null stays below 1%. The binding pair are the two 50%-line
+    # tags, nocturnal and after-hours (p=0.25): 21; weekend-coded (16) and
+    # nine-to-five (12) reach 1% sooner and sit safely inside one gate.
     WINDOW_MIN = 21
     enough = total >= WINDOW_MIN
 
-    # `last_day` is the newest commit that is not in the future, so when
-    # `ahead` commits are dated later this gap was measured from an older
-    # one than the streaks panel prints. Unsaid, the two panels contradicted
-    # each other four lines apart: "last commit 2036-01-05" above "nothing
-    # committed in 141 days". The shorter lead is there for the arithmetic
-    # that will not fit the long one - a repo idle for decades with a
-    # double-figure pile of future dates - and says the same thing.
-    # Both numbers on this line are grouped. The short form used to print
-    # "idle 739000 days, ignoring 9,999,999 future dates" - the same kind of
-    # count, one row, two spellings - and the metronomic line two rows below
-    # already argues that a number should not read one way here and another
-    # way somewhere else on the page.
+    # `last_day` is the newest non-future commit, so when `ahead` commits are
+    # dated later this gap is measured from an older date than streaks prints;
+    # the "ignoring N future dates" clause discloses that. Both numbers are
+    # grouped, and the short form is the fallback for when the long one will
+    # not fit (a repo idle for decades with a pile of future dates).
     idle_days = "%s days" % "{:,}".format(idle)
     quiet = "nothing committed in " + idle_days
     if ahead:
@@ -1044,34 +1018,25 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
             quiet = ("idle %s, ignoring %s"
                      % (idle_days, count(ahead, "future date")))
 
-    # Tested in this order, and at most three print, so the order decides
-    # what a repo that fires five is described as. The two tags about
-    # *whether* the repo is being worked on go first: "on a tear" and
-    # "dormant" answer that before any tag about which hours the work keeps,
-    # and a dormant repo whose old commits happened to be nocturnal was
-    # printing "nocturnal - weekend-coded - burst-driven" and never getting
-    # to the one fact a reader wants first. The rest keep the order they had.
+    # Tested in this order, and at most three print, so order decides how a
+    # repo that fires several is described. The two "is it being worked on"
+    # tags - on a tear, dormant - go first, before any tag about which hours
+    # the work keeps. The rest keep the order they had.
     candidates = [
-        # Both lines carry the unit their threshold is measured in. Moved
-        # to the top of the order they sit above the percent lines below
-        # (nocturnal through nine-to-five), where a bare "(line: 5)" would
-        # read as another percent instead of a day count.
+        # These two carry "days" in their line, so at the top of the order
+        # they sit above the percent lines below where a bare "(line: 5)"
+        # would read as a percent.
         (current >= 5, "on a tear",
          "%d days in a row with at least one commit (line: 5 days)"
          % current),
         (idle >= 21, "dormant", "%s (line: 21 days)" % quiet),
-        # Each of these four lines has to sit above the share an evenly
-        # spread history already puts in its own window - the `baseline`
-        # each one prints - or the tag fires on the *absence* of a pattern.
-        # The line alone does not say which of the two is being read. All
-        # four also carry the `enough` guard above: below WINDOW_MIN commits
-        # the share is noise, whichever side of the line it lands. nocturnal
-        # and after-hours read disjoint 6-hour windows, so the only way both
-        # clear 50% is an exact 50/50 split with nothing midday; the
-        # `evening > night` tie-break on after-hours then fires nocturnal
-        # alone, so at most one of the two ever fires. nine-to-five reads a
-        # window disjoint from both and 60 + 50 > 100 rules it out against
-        # either, so at most one of the three hour tags fires at all.
+        # Each of these four prints its baseline (else the tag reads as the
+        # absence of a pattern) and carries the `enough` guard (below
+        # WINDOW_MIN the share is noise). The windows are disjoint: nocturnal
+        # and after-hours can only both clear 50% at an exact 50/50 split,
+        # which the `evening > night` tie-break then gives to nocturnal alone,
+        # and nine-to-five is ruled out against either by 60 + 50 > 100 - so
+        # at most one of the three hour tags fires.
         (enough and night >= 50, "nocturnal",
          "%d%% of commits land between 00:00 and 05:59 "
          "(line: 50%%, baseline: %d%%)" % (pct(night), night_baseline)),
@@ -1084,37 +1049,26 @@ def mood(commits, weekly, nweeks, current, last_day, ahead, today):
         (enough and office >= 60, "nine-to-five",
          "%d%% of commits land Mon-Fri, 09:00-17:59 "
          "(line: 60%%, baseline: %d%%)" % (pct(office), office_baseline)),
-        # "the median week" was not the median of the weeks on the chart
-        # above - it is the median of the weeks that have commits, which is
-        # the only denominator either rhythm tag has ever used. On a repo
-        # with 22 empty weeks of 26 the chart's own median is 0, so a reader
-        # doing the division the line invited divided by nothing; on a
-        # metronomic repo it was worse than undefined, because the naive
-        # median lands on the *other side* of the "<2x" bound this line
-        # prints. Both lines now name the weeks they measure.
+        # "busy week" (both rhythm tags' only denominator) is the median of
+        # weeks that have commits, not of all weeks on the chart - whose
+        # median is 0 on a mostly-empty repo and lands on the wrong side of
+        # the "<2x" bound. Both lines name the weeks they measure.
         (len(nonempty) >= 4 and ratio >= 3.0, "burst-driven",
          "the busiest week holds %sx the median busy week (line: 3x)"
          % floor1(ratio)),
-        # This line is at its limit: 76 columns worst case, nothing on it
-        # elastic. "the median busy week" names the same denominator
-        # burst-driven uses two rows up and has to keep naming it; "lines"
-        # plural and "<2x" stay in that shape for the same four columns.
+        # At its limit: 76 columns worst case, nothing elastic. "the median
+        # busy week" names the same denominator burst-driven uses two rows up.
         (nweeks >= 4 and covered >= 60 and ratio < 2.0, "metronomic",
          "%d%% of weeks busy, peak %sx the median busy week "
          "(lines: 60%%, <2x)" % (pct(covered), floor1(ratio))),
     ]
     fired = [(tag, line) for ok, tag, line in candidates if ok]
-    # `cut` is what the three-tag cap dropped. The exclusions still hold it
-    # to 0 or 1. tear/dormant and burst-driven/metronomic are each one pair.
-    # Among the hour/day tags, nocturnal, after-hours and nine-to-five are
-    # mutually exclusive - disjoint windows, plus the after-hours tie-break
-    # for the one 50/50 case two of them could share - so at most one of the
-    # three fires; weekend-coded can ride alongside an hour tag but not
-    # nine-to-five (57 + 60 passes 100). So the most that fire at once is four
-    # - one of tear/dormant, one hour tag, weekend-coded, one rhythm tag - and
-    # the rhythm tag, last in this order, is always the one the cap drops. It
-    # is still written for an N it cannot reach: those are properties of
-    # thresholds this file sets, and the max() keeps it honest if they move.
+    # `cut` is what the three-tag cap dropped, held to 0 or 1 by the
+    # exclusions: tear/dormant is one pair, at most one hour tag fires,
+    # weekend-coded can ride an hour tag but not nine-to-five (57 + 60 > 100),
+    # and burst/metronomic is one pair - so at most four fire and the last in
+    # this order (a rhythm tag) is the one dropped. max() keeps it honest if
+    # the thresholds move.
     cut = max(0, len(fired) - 3)
     tags = [tag for tag, _ in fired[:3]]
     evidence = [line for _, line in fired[:3]]
